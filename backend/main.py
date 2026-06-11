@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import backend.interview_router as interview
-
+import backend.agent_router as agent
 load_dotenv()
 
 app=FastAPI(title="Customer Support Chatbot API",version="0.1.0")
@@ -15,7 +15,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
 app.include_router(interview.router)
+app.include_router(agent.router)
 
 @app.get("/health")
 def health_check()->dict[str,str]:

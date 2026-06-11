@@ -2,6 +2,7 @@
 
 import os
 from agents import Agent
+from agents import ModelSettings
 from agents import GuardrailFunctionOutput
 from agents import RunContextWrapper
 from agents import TResponseInputItem
@@ -93,7 +94,8 @@ interview_agent = Agent(
     "당신은 한국어 면접 코치입니다. 사용자가 면접 질문 생성을 요청하면"
     "반드시 make_interview_question 도구를 사용한 뒤 결과를 짧게 설명하세요."
   ),
-  tools=[make_interview_question]
+  tools=[make_interview_question],
+  model_settings=ModelSettings(max_completition_tokens=1000)
 )
 
 @function_tool
@@ -142,7 +144,8 @@ question_agent = Agent(
     "질문 1개와 질문 의도를 짧게 설명합니다."
     "지원자 답변을 평가하거나 피드백하지 마세요."
   ),
-  tools=[tool_make_question]
+  tools=[tool_make_question],
+  model_settings=ModelSettings(max_completition_tokens=1000)
 )
 
 evaluation_agent = Agent(
@@ -156,6 +159,7 @@ evaluation_agent = Agent(
         "새 면접 질문을 만들지 마세요."
     ),
     tools=[tool_score_answer],
+    model_settings=ModelSettings(max_completition_tokens=1000)
 )
 
 feedback_agent = Agent(
@@ -169,6 +173,7 @@ feedback_agent = Agent(
         "점수 산정은 평가 Specialist에게 맡기세요."
     ),
     tools=[tool_score_answer],
+    model_settings=ModelSettings(max_completition_tokens=1000)
 )
 
 # ======
@@ -188,5 +193,6 @@ triage_agent = Agent(
         "한국어로 응답하세요."
     ),
     handoffs=[question_agent, evaluation_agent, feedback_agent],
-    input_guardrails=[injection_guardrail]
+    input_guardrails=[injection_guardrail],
+    model_settings=ModelSettings(max_completition_tokens=300)
 )

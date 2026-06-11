@@ -9,6 +9,7 @@ from core.roles import ROLES
 st.set_page_config(
     page_title="AI 면접 코치",
     page_icon="🎤",
+    layout="wide",
 )
 
 st.title("면접 코치")
@@ -122,7 +123,26 @@ if user_input:
 
     # 여기에 response_text를 st.session_state.messages에 append하는 코드를 채워요.
     st.rerun()
-   
+
+def build_pages():
+    """면접 코치 앱의 세 페이지를 등록하고 실행합니다."""
+    # TODO: st.Page로 frontend/pages/interview.py를 등록해요.
+    interview_page = st.Page("pages/interview.py")
+
+    # TODO: st.Page로 frontend/pages/resume.py를 등록해요.
+    resume_page = st.Page("pages/resume.py")
+
+    # TODO: st.Page로 frontend/pages/settings.py를 등록해요.
+    settings_page = st.Page("pages/settings.py")
+
+    # TODO: st.navigation에 세 페이지를 그룹으로 묶어요.
+    pg = st.navigation([interview_page,resume_page,settings_page])
+
+    # TODO: 선택된 페이지를 실행해요.
+    pg.run()
+    
+build_pages()
+
 # TODO: 아래 주석 블록을 app.py 하단에 붙여요.
 # day1-self2에서 구현할 항목입니다.
 
