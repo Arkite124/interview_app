@@ -12,12 +12,12 @@ from agents import input_guardrail
 from pydantic import BaseModel
 from pydantic import Field
 
-from config import MODEL_NAME
-from config import ini_env
-from roles import get_role
-from tools import make_interview_question as _make_question
-from tools import score_answer as _score_answer
-from tools import make_feedback as _make_feedback
+from core.config import MODEL_NAME
+from core.config import ini_env
+from core.roles import get_role
+from core.tools import make_interview_question as _make_question
+from core.tools import score_answer as _score_answer
+from core.tools import make_feedback as _make_feedback
 
 # ======
 # 1. INPUT GUARDRAIL - 프롬프트 인젝션 차단
@@ -95,7 +95,7 @@ interview_agent = Agent(
     "반드시 make_interview_question 도구를 사용한 뒤 결과를 짧게 설명하세요."
   ),
   tools=[make_interview_question],
-  model_settings=ModelSettings(max_completition_tokens=1000)
+  model_settings=ModelSettings(max_tokens=1000)
 )
 
 @function_tool
@@ -145,7 +145,7 @@ question_agent = Agent(
     "지원자 답변을 평가하거나 피드백하지 마세요."
   ),
   tools=[tool_make_question],
-  model_settings=ModelSettings(max_completition_tokens=1000)
+  model_settings=ModelSettings(max_tokens=1000)
 )
 
 evaluation_agent = Agent(
@@ -159,7 +159,7 @@ evaluation_agent = Agent(
         "새 면접 질문을 만들지 마세요."
     ),
     tools=[tool_score_answer],
-    model_settings=ModelSettings(max_completition_tokens=1000)
+    model_settings=ModelSettings(max_tokens=1000)
 )
 
 feedback_agent = Agent(
@@ -173,7 +173,7 @@ feedback_agent = Agent(
         "점수 산정은 평가 Specialist에게 맡기세요."
     ),
     tools=[tool_score_answer],
-    model_settings=ModelSettings(max_completition_tokens=1000)
+    model_settings=ModelSettings(max_tokens=1000)
 )
 
 # ======
@@ -194,5 +194,5 @@ triage_agent = Agent(
     ),
     handoffs=[question_agent, evaluation_agent, feedback_agent],
     input_guardrails=[injection_guardrail],
-    model_settings=ModelSettings(max_completition_tokens=300)
+    model_settings=ModelSettings(max_tokens=300)
 )

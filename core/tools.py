@@ -1,11 +1,11 @@
 """tools.py - 면접 코치 도구 함수"""
 
-from roles import get_role
+from core.roles import get_role
 
 def make_interview_question(role_key: str, difficulty: str = "기초") -> str:
   """
   지원 직무와 난이도를 받아 면접 질문 한 개를 만듭니다.
-  Agrs:
+  Args:
     role_key: 면접관 유형 키. tech, personality, executive, structured
     difficulty: 질문 난이도, 기초 또는 심화
   """

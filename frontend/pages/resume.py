@@ -6,15 +6,13 @@
 import streamlit as st
 
 def read_resume_text(uploaded_file):
-    """업로드된 이력서 파일에서 면접 질문 생성용 텍스트를 준비합니다."""
-    # TODO: uploaded_file이 없는 경우를 먼저 처리합니다.
-    if uploaded_file is not None:
-        st.write(f"선택한 파일 : {uploaded_file.name}")
-        try:
-            # TODO: uploaded_file.read().decode("utf-8") 위치를 채웁니다.
-            file_text=uploaded_file.read().decode("utf-8")
-        except UnicodeDecodeError:
-            st.error("utf-8로 읽을 수 없는 파일입니다. 인코딩 방식을 utf-8로 바꾼 뒤 시도해주세요.")
+    if uploaded_file is None:
+        return ""
+    file_text = ""
+    if uploaded_file.type == "text/plain":
+        file_text = uploaded_file.read().decode("utf-8")
+    else:
+        file_text = ""
     return file_text
 
 st.title("이력서 분석")
@@ -22,10 +20,16 @@ settings = st.session_state.get("setting", {})
 st.caption(f"현재 질문 역할: {settings.get('role_preset', '기술 면접')}")
 # TODO: self2에서 st.file_uploader 입력을 추가해요.
 uploaded_file = st.file_uploader(
-    "이력서 텍스트 파일을 업로드하세요",
-    type=[".txt"],
+    "자기소개서 파일을 업로드하세요",
+    type=["txt"]
 )
+
 resume_text = read_resume_text(uploaded_file)
+
+if resume_text:
+    st.text_area("자기소개서 내용", resume_text, height=300)
+else:
+    st.info("txt 파일을 업로드하면 내용이 표시됩니다.")
 
 # TODO: self2에서 이력서 기반 질문 생성 요청을 연결해요.
 if resume_text:

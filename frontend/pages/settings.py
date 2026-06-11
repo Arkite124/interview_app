@@ -17,6 +17,7 @@ DEFAULT_SETTINGS = {
 }
 
 setting=dict()
+
 def ensure_settings() -> dict:
     """앱 전체에서 공유할 설정 dict를 준비합니다."""
     global setting

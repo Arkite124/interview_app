@@ -15,7 +15,6 @@ def get_backend_url() -> str:
     # 여기에 os.getenv()로 BACKEND_URL을 읽고, 없으면 http://localhost:8000을 반환하는 코드를 채워요.
     return BACKEND_URL
 
-
 def post_interview_message(message: str) -> dict[str, Any]:
     """면접 코치 백엔드에 일반 응답 요청을 보냅니다."""
     # TODO: httpx.Client를 사용해 get_backend_url() + "/chat"에 POST 요청을 보내요.
