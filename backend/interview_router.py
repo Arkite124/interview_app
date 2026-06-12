@@ -29,6 +29,7 @@ class HistoryResponse(BaseModel):
     messages: list[dict[str, str]]
     role: str
     message_count: int
+
 ALLOWED_ROLES = {"general", "technical", "hr"}
 
 class RoleUpdateRequest(BaseModel):
@@ -166,7 +167,6 @@ async def interview_event_generator(
     # 여기에 전체 코드를 채워요.
 
     client=get_interview_openai_client()
-
     
     # TODO 세션 이력 연결:
     # if request.session_id:
@@ -187,8 +187,8 @@ async def interview_event_generator(
         model=request.model,
         stream=True,
         messages=[
-            {"role":"system","content":ROLE_PROMPTS[request.role]},
-            {"role":"user","content":f"질문 : {request.question} \n 답변: {request.answer}"}
+            {"role":"system","content": ROLE_PROMPTS[request.role]},
+            {"role":"user","content":user_content}
             ],
         stream_options={"include_usage": True}
     )

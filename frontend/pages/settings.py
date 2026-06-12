@@ -19,11 +19,9 @@ DEFAULT_SETTINGS = {
 setting=dict()
 
 def ensure_settings() -> dict:
-    """앱 전체에서 공유할 설정 dict를 준비합니다."""
-    global setting
-    if "setting" not in st.session_state:
-        st.session_state.setting=DEFAULT_SETTINGS.copy()
-    return st.session_state.setting
+    if "settings" not in st.session_state:
+        st.session_state.settings = DEFAULT_SETTINGS.copy()
+    return st.session_state.settings
     # TODO: "settings" 키가 아직 없는 경우를 먼저 확인해요.
     # TODO: DEFAULT_SETTINGS.copy()로 기본값을 넣어요.
     # TODO: st.session_state.settings를 반환해요.

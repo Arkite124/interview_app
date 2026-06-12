@@ -50,7 +50,7 @@ async def stream_interview_agent_endpoint(request: InterviewAgentRequest):
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
+            "X-Accel-Buffering":"no",
         },
     )
 

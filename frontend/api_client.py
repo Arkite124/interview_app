@@ -1,12 +1,12 @@
 # interview_app/frontend/api_client.py
 from __future__ import annotations
-
+import json
 import os
 from typing import Any
 import httpx
 from dotenv import load_dotenv
 from collections.abc import Iterator
-
+from frontend.pages.settings import ensure_settings
 load_dotenv()
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 
@@ -27,31 +27,50 @@ def post_interview_message(message: str) -> dict[str, Any]:
     
 def stream_interview_message(message: str) -> Iterator[str]:
     """면접 코치 백엔드의 SSE 응답을 순서대로 전달합니다."""
-    payload = {"message": message}
-    url = f"{get_backend_url()}/chat/stream"
-    # TODO: httpx.stream("POST", url, json=payload, timeout=30.0)으로 스트림을 엽니다.
+
+    settings = ensure_settings()
+
+    payload = {
+        "message": message,
+        "model": settings["model"],
+        "temperature": settings["temperature"],
+        "system_prompt": settings["system_prompt"],
+        "role_preset": settings["role_preset"],
+    }
+
+    url = f"{get_backend_url()}/agents/stream"
+
     with httpx.stream(
         "POST",
         url,
         json=payload,
-        timeout=30.0
+        timeout=30.0,
     ) as response:
-        # TODO: response.raise_for_status()를 with 블록 안에서 호출합니다.
         response.raise_for_status()
-        # TODO: response.iter_lines()로 줄을 순회합니다.
+
         for line in response.iter_lines():
-            # TODO: 빈 줄과 data: 접두사가 없는 줄을 건너뜁니다.
             if not line:
                 continue
+
             if not line.startswith("data:"):
                 continue
-            # TODO: token = line[5:].strip() 으로 실제 값만 추출합니다.
-            token=line[5:].strip()
-            # TODO: token이 "[DONE]"이면 반복을 멈춥니다.
-            if token=="[DONE]":
+
+            raw_data = line[5:].strip()
+
+            if raw_data == "[DONE]":
                 break
-            # TODO: 그 외에는 yield token으로 넘깁니다.
-            yield token
+
+            try:
+                event = json.loads(raw_data)
+            except json.JSONDecodeError:
+                continue
+
+            if event.get("type") == "token":
+                yield event.get("delta", "")
+
+            elif event.get("type") == "status":
+                # run_item 같은 상태 이벤트는 화면에 출력하지 않음
+                continue
 
 def render_streaming_answer(placeholder: Any, message: str) -> str:
     """스트리밍 토큰을 누적해 면접 코치 답변을 화면에 표시합니다.

@@ -40,7 +40,7 @@ else:
     st.error("utf-8로 인코딩 된 .txt 파일만 가능합니다.")
 def build_resume_question_request(resume_text: str, question_count: int) -> dict:
     """이력서 기반 면접 질문 생성 요청 값을 만듭니다."""
-    settings = st.session_state.setting
+    settings = st.session_state.get("settings", {})
 
     return {
         # TODO: resume_text를 요청 입력으로 넣습니다.
@@ -91,9 +91,39 @@ def render_function_call_result(result: dict) -> None:
 def save_resume_question_state(file_name: str, questions: list[str]) -> None:
     """이력서 기반 질문 생성 결과를 세션 상태에 저장합니다."""
     # TODO: st.session_state에 파일명과 질문 목록을 저장합니다.
+    if "resume_question" not in st.session_state:
+        st.session_state.resume_question=[]
     # TODO: 대시보드에서 쓸 질문 개수와 진행 상태 값을 저장합니다.
+    total_count=len(questions)
+    user_count=sum(1 for message in questions if message.get("role")=="user")
+    assistant_count=sum(1 for message in questions if message.get("role")=="assistant")
+
+    assistant_lengths=[
+        len(str(message.get("content","")))
+        for message in questions
+        if message.get("role")=="assistant"
+    ]
+    if assistant_lengths:
+        average_response_length=sum(assistant_lengths)/len(assistant_lengths)
+    else:
+        average_response_length=0.0
+    
+    if total_count:
+        assistant_ratio=assistant_count/total_count
+    else:
+        assistant_ratio=0.0
+
+    safe_progress=min(max(assistant_ratio,0.0),1.0)
+    return {
+        "total_count":total_count,
+        "user_count":user_count,
+        "assistant_count":assistant_count,
+        "average_response_length":average_response_length,
+        "assistant_ratio":assistant_ratio
+    }
+    
     # TODO: Day5 리포트 입력으로 넘길 확인 메모를 남깁니다.
-    pass
+    
 
 if st.button("이력서 기반 질문 생성"):
     # TODO: request dict를 만들어요.

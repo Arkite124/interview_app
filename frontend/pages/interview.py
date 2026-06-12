@@ -5,12 +5,14 @@
 # - 8주차 agents.py, roles.py, tools.py 파일은 수정하지 않습니다.
 from __future__ import annotations
 import os
+import json
 from typing import Any
 from collections.abc import Iterator
 import httpx
 import streamlit as st
 from dotenv import load_dotenv
 from pages.settings import ensure_settings
+from pages.history import ensure_session_state, get_selected_conversation
 
 load_dotenv()
 
@@ -68,12 +70,38 @@ def stream_interview_message(message: str) -> Iterator[str]:
             if not line.startswith("data:"):
                 continue
 
-            token = line[5:].strip()
+            raw_data = line.removeprefix("data:").strip()
 
-            if token == "[DONE]":
+            if raw_data == "[DONE]":
                 break
 
-            yield token
+            # 1차 JSON 파싱
+            try:
+                event = json.loads(raw_data)
+            except json.JSONDecodeError:
+                # JSON이 아니면 그냥 텍스트로 간주
+                yield raw_data
+                continue
+
+            event_type = event.get("type")
+
+            if event_type == "status":
+                continue
+
+            if event_type == "token":
+                delta = event.get("delta", "")
+
+                # 핵심: delta 자체가 또 JSON 문자열인 경우 방어
+                if isinstance(delta, str) and delta.strip().startswith("{"):
+                    try:
+                        nested_event = json.loads(delta)
+                        if nested_event.get("type") == "token":
+                            yield nested_event.get("delta", "")
+                        continue
+                    except json.JSONDecodeError:
+                        pass
+
+                yield delta
 
 
 # -----------------------------
@@ -88,38 +116,37 @@ settings = ensure_settings()
 st.caption(f"사용 중인 모델: {settings['model']}")
 st.caption(f"답변 정확성/창의성: {settings['temperature']}")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+ensure_session_state()
 
+current_session = get_selected_conversation()
 
-# 기존 대화 출력
-for message in st.session_state.messages:
+if current_session is None:
+    st.error("현재 면접 세션을 찾을 수 없습니다.")
+    st.stop()
+
+messages = current_session["messages"]
+
+for message in messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-
-# 채팅 입력
 user_input = st.chat_input("면접 답변을 입력해 주세요.")
 
 if user_input:
-    # 사용자 메시지 저장
-    st.session_state.messages.append({
+    messages.append({
         "role": "user",
         "content": user_input,
     })
 
-    # 사용자 메시지 즉시 출력
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # assistant 스트리밍 응답
     with st.chat_message("assistant"):
         response_text = st.write_stream(
             stream_interview_message(user_input)
         )
 
-    # assistant 메시지 저장
-    st.session_state.messages.append({
+    messages.append({
         "role": "assistant",
         "content": response_text,
     })
