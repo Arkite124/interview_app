@@ -17,7 +17,7 @@ function RootLayout() {
               Interview App
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              자소서 첨삭과 면접 연습을 한 곳에서 관리하세요.
+              자소서 분석으로 면접 연습을 하고, 미리 예상 면접 질문들을 받아보세요.
             </p>
           </div>
 
@@ -41,7 +41,7 @@ function RootLayout() {
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
               }`}
             >
-              자소서 첨삭
+              예상 질문 생성
             </Link>
 
             <Link

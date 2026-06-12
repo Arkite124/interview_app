@@ -2,8 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
+from typing import Any
 import backend.interview_router as interview
 import backend.agent_router as agent
+import backend.files_router as files
 load_dotenv()
 
 app=FastAPI(title="Customer Support Chatbot API",version="0.1.0")
@@ -18,13 +20,12 @@ app.add_middleware(
 
 app.include_router(interview.router)
 app.include_router(agent.router)
-
+app.include_router(files.router)
 @app.get("/health")
-def health_check()->dict[str,str]:
+def health_check()->dict[str,Any]:
     """서버가 실행중인지 확인"""
     api_key=os.getenv("OPENAI_API_KEY")
-    valid_key=False
     if not api_key:
         valid_key=False
     else : valid_key=True
-    return{"status":str(valid_key)}
+    return{"status":valid_key}

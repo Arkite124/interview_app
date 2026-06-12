@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 from collections.abc import Iterator
-from frontend.pages.settings import ensure_settings
+from pages.settings import ensure_settings
 load_dotenv()
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 
@@ -36,6 +36,7 @@ def stream_interview_message(message: str) -> Iterator[str]:
         "temperature": settings["temperature"],
         "system_prompt": settings["system_prompt"],
         "role_preset": settings["role_preset"],
+        "mode": settings["mode"],
     }
 
     url = f"{get_backend_url()}/agents/stream"

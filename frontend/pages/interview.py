@@ -13,10 +13,9 @@ import streamlit as st
 from dotenv import load_dotenv
 from pages.settings import ensure_settings
 from pages.history import ensure_session_state, get_selected_conversation
-
+from api_client import get_backend_url
 load_dotenv()
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 
 def initialize_messages()->None:
     """면접 대화 기록이 없으면 초기 안내 메시지를 준비합니다."""
@@ -24,10 +23,6 @@ def initialize_messages()->None:
         st.session_state.messages=[{"role": "assistant", "content": "안녕하세요. AI 면접관 입니다."}]
 
 initialize_messages()
-
-def get_backend_url() -> str:
-    """면접 코치 FastAPI 백엔드 주소를 환경변수 또는 기본값으로 가져옵니다."""
-    return BACKEND_URL
 
 def post_interview_message(message: str) -> dict[str, Any]:
     """면접 코치 백엔드에 일반 응답 요청을 보냅니다."""
@@ -51,6 +46,7 @@ def stream_interview_message(message: str) -> Iterator[str]:
         "temperature": settings["temperature"],
         "system_prompt": settings["system_prompt"],
         "role_preset": settings["role_preset"],
+        "mode": settings["mode"],
     }
 
     url = f"{get_backend_url()}/agents/stream"

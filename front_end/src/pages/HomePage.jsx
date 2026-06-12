@@ -9,13 +9,12 @@ function HomePage() {
             AI Resume & Interview Coach
           </p>
 
-          <h1 className="max-w-2xl text-3xl font-bold tracking-tight md:text-5xl">
-            자기소개서부터 면접 답변까지 한 번에 연습하세요.
+          <h1 className="max-w-3xl text-3xl sm:text-2xl md:text-4xl font-bold tracking-tight">
+            자기소개서에서 나오는 면접 질문 및 직무별 면접 질의응답들을 피드백 받아 보세요.
           </h1>
 
           <p className="mt-5 max-w-2xl text-base leading-7 text-blue-100">
-            txt 파일을 업로드하거나 직접 입력한 자기소개서를 기반으로 첨삭을
-            요청할 수 있습니다.
+            txt 파일을 업로드하여 예상 질문을 생성합니다.
           </p>
 
           <div className="mt-8">
@@ -23,7 +22,7 @@ function HomePage() {
               to="/resume"
               className="inline-flex items-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50"
             >
-              자소서 첨삭 시작하기
+              예상 질문 분석 시작하기 &gt;
             </Link>
           </div>
         </div>

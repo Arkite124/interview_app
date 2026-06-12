@@ -506,8 +506,10 @@ source = { virtual = "." }
 dependencies = [
     { name = "dotenv" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "openai" },
     { name = "openai-agents" },
+    { name = "pydantic" },
     { name = "streamlit" },
 ]
 
@@ -515,8 +517,10 @@ dependencies = [
 requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "fastapi", specifier = ">=0.136.3" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "openai", specifier = ">=2.41.0" },
     { name = "openai-agents", specifier = ">=0.17.4" },
+    { name = "pydantic", specifier = ">=2.13.4" },
     { name = "streamlit", specifier = ">=1.58.0" },
 ]
 
