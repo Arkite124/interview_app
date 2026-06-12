@@ -14,9 +14,11 @@ CLI에 현재 디렉토리 기준 실행 방법 명령어 </br>
 ### backend FastAPI 
 - uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 </br>
+
 ### frontend-streamlit 
 - uv run streamlit run frontend/app.py --server.port 8501
 </br>
+
 ### frontend_react 
 - cd front_end
 - npm install (package.json에 있는 필수 패키지 설치)
