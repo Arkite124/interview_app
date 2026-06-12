@@ -9,7 +9,7 @@ import backend.files_router as files
 load_dotenv()
 
 app=FastAPI(title="Customer Support Chatbot API",version="0.1.0")
-allow_origins=["http://localhost:8501","http://localhost:5173","http://192.168.0.132"]
+allow_origins=["http://localhost:8501","http://localhost:5173"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
