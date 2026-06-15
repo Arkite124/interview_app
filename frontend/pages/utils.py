@@ -1,5 +1,4 @@
 from __future__ import annotations
-import streamlit as st
 import httpx
 from typing import Any
 import streamlit as st
@@ -60,11 +59,11 @@ def check_backend_health(backend_url: str = "http://localhost:8000") -> bool:
     # 성공이면 True, 실패면 False를 반환합니다.
     # 힌트: try: response = ... response.raise_for_status() return response.json().get("status") == "ok"  except ...: return False
     try: 
-        with httpx.Client(timeout=3.0) as client:
+        with httpx.Client(timeout=5.0) as client:
             response = client.get(f"{backend_url}/health")
-            response.raise_for_status() 
-        return response.json().get("status") == "ok"  
-    except Exception: 
+            response.raise_for_status()
+        return response.json().get("status") == "True"
+    except Exception:
         return False
 def render_feedback_widget(message_id: str, conversation_id: str, index: int) -> None:
     """AI 응답에 대한 thumbs 피드백 입력 위치를 만든다."""

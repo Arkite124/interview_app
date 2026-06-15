@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from typing import Literal
 import json
 from openai.types.responses import ResponseTextDeltaEvent
 from agents import Runner, RunItemStreamEvent, ModelSettings
@@ -29,7 +30,7 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 class InterviewAgentRequest(BaseModel):
     """면접 에이전트 스트림 요청 값을 담습니다."""
     message: str
-    mode: str = "single"
+    mode: str = Literal["single","multi"]
     model: str | None = None
     temperature: float | None = None
     system_prompt: str | None = None
@@ -77,16 +78,24 @@ async def run_interview_agent_stream(
 
     # 프론트에서 받은 설정값을 런타임 agent에 반영
     clone_kwargs = {}
-
+    # 모델 설정 반영
     if model:
         clone_kwargs["model"] = model
+    #   기존 system_prompt가 손상되지 않도록
+    instructions = agent.instructions or ""
 
     if system_prompt:
-        clone_kwargs["instructions"] = system_prompt
+        instructions += f"\n\n사용자 추가 요구사항:\n{system_prompt}"
+
+    if role_preset:
+        instructions += f"\n\n현재 면접 유형: {role_preset}"
+
+    clone_kwargs["instructions"] = instructions
 
     if temperature is not None:
         clone_kwargs["model_settings"] = ModelSettings(
-            temperature=temperature
+            temperature=temperature,
+            max_tokens=1000
         )
 
     if clone_kwargs:
@@ -108,28 +117,23 @@ async def run_interview_agent_stream(
 
 async def iter_agent_events(agent_stream):
     """에이전트 스트림 이벤트를 SSE 형식으로 정리합니다."""
-
     async for event in agent_stream:
         # 1) 모델 토큰 delta 이벤트 처리
         if getattr(event, "type", None) == "raw_response_event":
             data = getattr(event, "data", None)
-
             if isinstance(data, ResponseTextDeltaEvent):
                 payload = {
                     "type": "token",
                     "delta": data.delta,
                 }
-
                 yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
                 continue
-
         # 2) run item 이벤트 처리
         if isinstance(event, RunItemStreamEvent):
             payload = {
                 "type": "status",
                 "label": "run_item",
             }
-
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
             item = getattr(event, "item", None)

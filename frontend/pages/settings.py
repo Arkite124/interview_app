@@ -14,6 +14,7 @@ DEFAULT_SETTINGS = {
     "temperature": 0.7,
     "system_prompt": "당신은 전문 면접관입니다. 지원자의 역량을 파악하는 심층 질문을 해주세요.",
     "role_preset": "기술 면접",
+    "mode": "single",
 }
 
 setting=dict()
@@ -46,13 +47,16 @@ selected_role = st.selectbox("역할 선택",list(ROLE_PRESETS.keys()))
 # TODO: st.text_area로 system_prompt를 편집하게 해요.
 selected_prompt = st.text_area("시스템 프롬프트 편집",height=150)
 
+mode=st.selectbox("모델 선택",["single","multi"])
+
 if st.button("설정 저장"):
     # TODO: 버튼을 눌렀을 때만 st.session_state.settings를 갱신해요.
-    st.session_state.setting.update({
+    st.session_state.settings.update({
         "model": selected_model,
         "temperature": selected_temperature,
         "role_preset": selected_role,
         "system_prompt": selected_prompt,
+        "mode":mode
     })
     st.success("설정을 저장했습니다.")
 
