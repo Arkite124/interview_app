@@ -8,13 +8,13 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableParallel
 
-from rag_pipeline import format_sources, get_retriever
+from backend.rag_pipeline import format_sources, get_retriever
 
 load_dotenv()
 
 # ── 전이 계약: 다음 셀프(self2)는 아래 CUSTOMIZE 3곳의 '값만' 바꿔 도메인을 전이해요 ──
 # CUSTOMIZE: domain PDF path — 사내 QA 트랙 값 (rag_pipeline.py가 색인한 문서와 동일)
-DOC_PATHS = ["company_policy.pdf"]
+DOC_PATHS = "backend/docs/sample.pdf"
 # CUSTOMIZE: PERSIST_DIR — 트랙별 index 분리 (rag_pipeline.py가 재로드하는 폴더와 동일)
 PERSIST_DIR = "./chroma_company_docs"
 # CUSTOMIZE: system prompt — 도메인 정책의 단일 교체 지점 ({context}는 함수가 붙여요)
@@ -26,15 +26,13 @@ model = init_chat_model("openai:gpt-4o-mini")
 question = "휴가 신청 절차는 어떻게 되나요?"  # 사내 QA 고정 질문
 
 # TODO 1 (자율실습 1): retriever를 '단 한 번' 호출해 근거 후보를 눈으로 확인해요.
-#   docs = retriever.invoke(question)
-#   print(f"len(docs)={len(docs)}", docs[0].metadata)
-# 두 줄을 작성·실행해 로그를 확인한 뒤, 다음 단계로 진행해요.
+# docs = retriever.invoke(question)
+# print(f"len(docs)={len(docs)}", docs[0].metadata)
 
 
 def format_docs(docs) -> str:
     """LLM prompt에 넣을 context '문자열'만 만들어요 (sources와 역할 분리)."""
-    # TODO 2 (자율실습 2): 각 doc.page_content를 "\n\n"으로 이어 붙여 반환해요.
-    ...
+    return "\n\n".join(doc.page_content for doc in docs)
 
 
 def build_rag_chain(retriever, system_prompt):
@@ -49,7 +47,7 @@ def build_rag_chain(retriever, system_prompt):
 
     answer_chain = (
         {
-            "context": lambda x: format_docs(x["docs"]),   # 같은 docs에서 context 파생
+            "context": lambda x: format_docs(x["docs"]),
             "question": lambda x: x["question"],
         }
         | prompt
@@ -66,13 +64,9 @@ def build_rag_chain(retriever, system_prompt):
         # [2단계] 동일 docs에서 answer와 sources를 '파생'해요 (retriever 재호출 금지).
         | RunnableParallel(
             answer=answer_chain,
-            # TODO 3 (자율실습 3): 같은 docs에서 sources를 파생하도록 format_sources를 연결해요.
-            #   힌트: sources=lambda x: format_sources(x["docs"])
-            sources=...,
+            sources=lambda x: format_sources(x["docs"]),
         )
     )
-
-
 rag_chain = build_rag_chain(retriever, SYSTEM_PROMPT)
 
 
@@ -81,13 +75,13 @@ def ask_rag(question: str) -> dict:
     return rag_chain.invoke({"question": question})
 
 
-if __name__ == "__main__":
-    result = ask_rag(question)
+# if __name__ == "__main__":
+#     result = ask_rag(question)
 
-    # hard exit 점검: answer와 sources 둘 다 non-empty여야만 완료예요.
-    if not result["answer"].strip():
-        sys.exit("[hard exit] answer가 비어 있어요 — prompt/context 연결부터 점검하세요.")
-    if not result["sources"]:
-        sys.exit("[hard exit] sources가 빈 list예요 — metadata/변환부터 점검하세요.")
+#     # hard exit 점검: answer와 sources 둘 다 non-empty여야만 완료예요.
+#     if not result["answer"].strip():
+#         sys.exit("[hard exit] answer가 비어 있어요 — prompt/context 연결부터 점검하세요.")
+#     if not result["sources"]:
+#         sys.exit("[hard exit] sources가 빈 list예요 — metadata/변환부터 점검하세요.")
 
-    print(result)  # ← 이 출력이 응답 로그 = Day 4 비교 기준선이에요
+#     print(result)  # ← 이 출력이 응답 로그 = Day 4 비교 기준선이에요

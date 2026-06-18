@@ -44,7 +44,7 @@ Thumbs.db
 # SQLite DB
 *.sqlite3
 *.db
-
+docs/
 # Output / temp files
 output/
 outputs/
