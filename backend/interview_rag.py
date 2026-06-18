@@ -4,10 +4,7 @@ import sys
 
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
-from langchain_core.output_parsers import StrOutputParser
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.document_loaders import TextLoader
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from backend.rag_chain import build_rag_chain
 from backend.rag_pipeline import get_embeddings,format_sources
@@ -16,7 +13,8 @@ load_dotenv()
 
 # ── 전이 계약: 다음 셀프(self2)는 아래 CUSTOMIZE 3곳의 '값만' 바꿔 도메인을 전이해요 ──
 # CUSTOMIZE: domain PDF path — 사내 QA 트랙 값 (rag_pipeline.py가 색인한 문서와 동일)
-DOC_PATHS = "backend/docs/company_doc.pdf"
+# DOC_PATHS = "backend/docs/company_doc.pdf"
+DOC_PATHS = "./docs/company_doc.pdf"
 # CUSTOMIZE: PERSIST_DIR — 트랙별 index 분리 (rag_pipeline.py가 재로드하는 폴더와 동일)
 PERSIST_DIR = "./chroma_job_docs"
 # CUSTOMIZE: system prompt — 도메인 정책의 단일 교체 지점 ({context}는 함수가 붙여요)

@@ -14,7 +14,8 @@ def get_embeddings() -> OpenAIEmbeddings:
     """과정 전체가 공유하는 embedding 객체를 만든다 — 다른 파일은 직접 생성 금지, 이 함수만 import."""
     return OpenAIEmbeddings(model=EMBEDDING_MODEL)  # 인자명은 model= 입니다 (model_name 아님)
 # CUSTOMIZE: domain PDF path — 면접 코치 트랙에서는 직무 PDF/채용공고 경로로 교체
-DOC_PATH = "backend/docs/sample.pdf"
+# DOC_PATH = "backend/docs/sample.pdf"
+DOC_PATH = "./docs/sample.pdf"
 
 loader = PyPDFLoader(DOC_PATH)
 docs = loader.load()

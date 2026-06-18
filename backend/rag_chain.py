@@ -75,13 +75,13 @@ def ask_rag(question: str) -> dict:
     return rag_chain.invoke({"question": question})
 
 
-# if __name__ == "__main__":
-#     result = ask_rag(question)
+if __name__ == "__main__":
+    result = ask_rag(question)
 
-#     # hard exit 점검: answer와 sources 둘 다 non-empty여야만 완료예요.
-#     if not result["answer"].strip():
-#         sys.exit("[hard exit] answer가 비어 있어요 — prompt/context 연결부터 점검하세요.")
-#     if not result["sources"]:
-#         sys.exit("[hard exit] sources가 빈 list예요 — metadata/변환부터 점검하세요.")
+    # hard exit 점검: answer와 sources 둘 다 non-empty여야만 완료예요.
+    if not result["answer"].strip():
+        sys.exit("[hard exit] answer가 비어 있어요 — prompt/context 연결부터 점검하세요.")
+    if not result["sources"]:
+        sys.exit("[hard exit] sources가 빈 list예요 — metadata/변환부터 점검하세요.")
 
-#     print(result)  # ← 이 출력이 응답 로그 = Day 4 비교 기준선이에요
+    print(result)  # ← 이 출력이 응답 로그 = Day 4 비교 기준선이에요
