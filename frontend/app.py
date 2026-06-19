@@ -68,6 +68,7 @@ def build_pages() -> None:
         title="설정",
         icon="⚙️",
     )
+    
     pg = st.navigation(
         [
             interview_page,
