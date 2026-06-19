@@ -1,6 +1,7 @@
 import httpx
 import streamlit as st
-
+from dotenv import load_dotenv
+load_dotenv()
 st.set_page_config(page_title="랭채인 + RAG 예제 - AI 사내 문서 QnA", layout="wide")
 BACKEND_URL = "http://127.0.0.1:8000"
 
@@ -69,11 +70,11 @@ if user_input := st.chat_input("질문을 입력하세요..."):
       if st.session_state.mode == "rag":
         st.write("rag mode")
         with st.status("사내 문서 검색 중...", expanded=True) as status:
-          st.write("질문 문석 및 문서 검색...")
+          st.write("질문 분석 및 문서 검색...")
           response = httpx.post(f"{BACKEND_URL}/rag", json={"message": user_input}, timeout=60.0)
           response.raise_for_status()
           data = response.json()
-          st.write(f"검색 완료 (근서 {len(data.get('sources', []))}건)")
+          st.write(f"검색 완료 (근거 {len(data.get('sources', []))}건)")
           if data.get("attempts", 0) > 0:
             st.write(f"재검색 {data['attempts']}회 수행")
           status.update(label="검색 완료", state="complete", expanded=False)
@@ -110,7 +111,7 @@ if user_input := st.chat_input("질문을 입력하세요..."):
     except httpx.ConnectError:
       st.error(
         "Backend 서버에 연결할 수 없습니다.\n\n"
-        f"'uvicorn backend.app:app --port 8001' 으로 서버를 먼저 시작하세요."
+        f"'uvicorn backend.app:app --port 8000' 으로 서버를 먼저 시작하세요."
       )
     except httpx.HTTPStatusError as e:
       st.error(f"API 오류: {e.response.status_code}\n\n{e.response.text}")

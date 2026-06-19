@@ -4,16 +4,15 @@
 # - st.session_state.settings에서 모델과 temperature를 읽습니다.
 # - 8주차 agents.py, roles.py, tools.py 파일은 수정하지 않습니다.
 from __future__ import annotations
-import os
 import json
 from typing import Any
 from collections.abc import Iterator
 import httpx
 import streamlit as st
 from dotenv import load_dotenv
-from pages.settings import ensure_settings
-from pages.history import ensure_session_state, get_selected_conversation
-from api_client import get_backend_url
+from frontend_legacy.pages.settings import ensure_settings
+from frontend_legacy.pages.history import ensure_session_state, get_selected_conversation
+from frontend_legacy.api_client import get_backend_url
 load_dotenv()
 
 

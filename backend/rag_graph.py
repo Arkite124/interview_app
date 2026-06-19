@@ -1,8 +1,8 @@
 """rag_graph.py — LangGraph RAG 품질 루프 (Day 4 S5-S6)
 
 교안 핵심 패턴:
-- RagState(TypedDict) 6필드: question, docs, answer, quality, attempts, route_log
-- node = state를 인자로 받고, 변경분 dict만 반환 (return docs / return state / return None 금지)
+- RagState(TypedDict) 6필드: question, sample_docs, answer, quality, attempts, route_log
+- node = state를 인자로 받고, 변경분 dict만 반환 (return sample_docs / return state / return None 금지)
 - router = state를 읽기만 하고 label 문자열만 반환 (state update 금지)
 - compile = 배선 확인이지 품질 보증이 아님
 - should_retry: Literal["retry", "generate"] — MAX_RETRIES cap으로 무한 루프 방지

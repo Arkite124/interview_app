@@ -29,7 +29,7 @@ from backend.models import get_model  # noqa: F401 — load_dotenv 보장용
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_DOC_PATH = os.path.join(os.path.dirname(__file__), "sample_docs", "company_policy.txt")
-DEFAULT_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "chroma_company_docs")
+DEFAULT_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "./chroma_company_docs")
 
 # 기준 설정 3종 (교안 고정값)
 CHUNK_SIZE = 500
@@ -126,32 +126,32 @@ def format_sources(docs: list[Document]) -> list[dict]:
         })
     return sources
 
-
-# ─── smoke test ──────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import shutil
-
-    # 기존 index 초기화 (재현 가능한 테스트)
-    if os.path.exists(DEFAULT_PERSIST_DIR):
-        shutil.rmtree(DEFAULT_PERSIST_DIR)
-        print(f"[rag_pipeline] 기존 index 삭제: {DEFAULT_PERSIST_DIR}")
-
-    # index 생성
-    db = build_index()
-
-    # k=2 smoke 검색
-    query = "휴가 신청 절차는 어떻게 되나요?"
-    results = db.similarity_search(query, k=2)
-    print(f"\n[smoke] query: {query}")
-    for doc in results:
-        print(doc.page_content[:120])
-        print(format_sources([doc])[0])
-        print()
-
-    # retriever smoke
-    retriever = get_retriever(k=3)
-    retriever_results = retriever.invoke("출장비 한도는?")
-    print(f"[retriever smoke] {len(retriever_results)}건 검색됨")
-    for doc in retriever_results:
-        print(f"  - {doc.page_content[:80]}...")
+#
+# # ─── smoke test ──────────────────────────────────────────────────────
+#
+# if __name__ == "__main__":
+#     import shutil
+#
+#     # 기존 index 초기화 (재현 가능한 테스트)
+#     if os.path.exists(DEFAULT_PERSIST_DIR):
+#         shutil.rmtree(DEFAULT_PERSIST_DIR)
+#         print(f"[rag_pipeline] 기존 index 삭제: {DEFAULT_PERSIST_DIR}")
+#
+#     # index 생성
+#     db = build_index()
+#
+#     # k=2 smoke 검색
+#     query = "휴가 신청 절차는 어떻게 되나요?"
+#     results = db.similarity_search(query, k=2)
+#     print(f"\n[smoke] query: {query}")
+#     for doc in results:
+#         print(doc.page_content[:120])
+#         print(format_sources([doc])[0])
+#         print()
+#
+#     # retriever smoke
+#     retriever = get_retriever(k=3)
+#     retriever_results = retriever.invoke("출장비 한도는?")
+#     print(f"[retriever smoke] {len(retriever_results)}건 검색됨")
+#     for doc in retriever_results:
+#         print(f"  - {doc.page_content[:80]}...")

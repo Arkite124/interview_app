@@ -14,7 +14,7 @@ load_dotenv()
 
 # ── 전이 계약: 다음 셀프(self2)는 아래 CUSTOMIZE 3곳의 '값만' 바꿔 도메인을 전이해요 ──
 # CUSTOMIZE: domain PDF path — 사내 QA 트랙 값 (rag_pipeline.py가 색인한 문서와 동일)
-DOC_PATHS = "backend/docs/sample.pdf"
+DOC_PATHS = "backend/sample_docs/company_policy.pdf"
 # CUSTOMIZE: PERSIST_DIR — 트랙별 index 분리 (rag_pipeline.py가 재로드하는 폴더와 동일)
 PERSIST_DIR = "./chroma_company_docs"
 # CUSTOMIZE: system prompt — 도메인 정책의 단일 교체 지점 ({context}는 함수가 붙여요)
@@ -26,8 +26,8 @@ model = init_chat_model("openai:gpt-4o-mini")
 question = "휴가 신청 절차는 어떻게 되나요?"  # 사내 QA 고정 질문
 
 # TODO 1 (자율실습 1): retriever를 '단 한 번' 호출해 근거 후보를 눈으로 확인해요.
-# docs = retriever.invoke(question)
-# print(f"len(docs)={len(docs)}", docs[0].metadata)
+# sample_docs = retriever.invoke(question)
+# print(f"len(sample_docs)={len(sample_docs)}", sample_docs[0].metadata)
 
 
 def format_docs(docs) -> str:
@@ -47,7 +47,7 @@ def build_rag_chain(retriever, system_prompt):
 
     answer_chain = (
         {
-            "context": lambda x: format_docs(x["docs"]),
+            "context": lambda x: format_docs(x["sample_docs"]),
             "question": lambda x: x["question"],
         }
         | prompt
@@ -64,7 +64,7 @@ def build_rag_chain(retriever, system_prompt):
         # [2단계] 동일 docs에서 answer와 sources를 '파생'해요 (retriever 재호출 금지).
         | RunnableParallel(
             answer=answer_chain,
-            sources=lambda x: format_sources(x["docs"]),
+            sources=lambda x: format_sources(x["sample_docs"]),
         )
     )
 rag_chain = build_rag_chain(retriever, SYSTEM_PROMPT)

@@ -52,9 +52,9 @@ def generate(state: RagState) -> dict[str, Any]:
     return {"answer": out["answer"], "sources": out["sources"]}
 
 def retrieve(state: RagState) -> dict[str, Any]:
-    # 실제 연결 시: docs = retriever.invoke(state["question"])  # rag_pipeline.get_retriever(k=3)
+    # 실제 연결 시: sample_docs = retriever.invoke(state["question"])  # rag_pipeline.get_retriever(k=3)
     docs = job_retriever.invoke(state["question"])
-    return {"docs": docs}
+    return {"sample_docs": docs}
 
 builder = StateGraph(RagState)
 builder.add_node("retrieve", retrieve)

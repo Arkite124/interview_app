@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import httpx
 import streamlit as st
-from api_client import get_backend_url
+from frontend_legacy.api_client import get_backend_url
 
 def read_resume_text(uploaded_file) -> str:
     """업로드된 txt 파일을 utf-8 문자열로 읽습니다."""

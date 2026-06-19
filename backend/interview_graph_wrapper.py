@@ -9,7 +9,7 @@ def run_interview_graph(question: str, thread_id: str) -> dict:
    """
     config = {"configurable": {"thread_id": thread_id}}
     result = app.invoke(
-        {"question": question, "docs": [], "answer": "",
+        {"question": question, "sample_docs": [], "answer": "",
          "quality": {}, "attempts": 0, "route_log": []},  # 초기 state — self1과 동일 골격
         config,  # invoke의 두 번째 인자
     )
