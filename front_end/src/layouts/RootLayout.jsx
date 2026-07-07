@@ -4,6 +4,9 @@ function RootLayout() {
   const location = useLocation();
 
   const isActive = (path) => {
+    if (path === "/qa") {
+      return location.pathname === path || location.pathname.startsWith("/qa/");
+    }
     return location.pathname === path;
   };
 
@@ -53,6 +56,17 @@ function RootLayout() {
               }`}
             >
               면접 에이전트
+            </Link>
+
+            <Link
+              to="/qa"
+              className={`block rounded-xl px-4 py-3 text-sm font-medium transition ${
+                isActive("/qa")
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              사내 문서 QA
             </Link>
 
             <Link
@@ -109,6 +123,17 @@ function RootLayout() {
                 }`}
               >
                 면접 에이전트
+              </Link>
+
+              <Link
+                to="/qa"
+                className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                  isActive("/qa")
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                사내 문서 QA
               </Link>
 
               <Link

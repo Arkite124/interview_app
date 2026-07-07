@@ -1,157 +1,185 @@
+# AI 면접 코치 웹앱
 
-internal-qa
+## 1. 프로젝트 개요
+TODO: 이 프로젝트가 무엇을 하는지 2~3문장으로 설명하세요.
+8주차 CLI 면접 코치를 Streamlit + FastAPI로 전환한 결과물입니다.
+FastAPI에서 LLM을 호출하여 Streamlit으로 frontend를 띄워 결과물을 볼 수 있습니다.
+덧붙인 react 구조는 보지 않으셔도 됩니다.
+FastAPI+React도 했지만, session 상태 유지가 아닌 임의로 localStorage 방식을 선택했습니다. 
+## 2. 프로젝트 구조
 
-question
-휴가
+이 레포지토리의 본체는 **면접 에이전트(interview app)** 입니다 — FastAPI 백엔드(`backend/main.py`) + Streamlit(`frontend/interview_app.py`) + React(`front_end/`) 3개 프론트가 같은 백엔드를 바라봅니다.
 
-attempts
-0
+```
+interview_app/
+├── backend/
+│   ├── main.py                # FastAPI 엔트리포인트 — 아래 라우터 3개 + /interview/rag, /health
+│   ├── interview_router.py    #   /interview/session/*, /interview/stream (세션 관리 + SSE 피드백)
+│   ├── agent_router.py        #   /agents/stream — openai-agents 기반 single/multi 에이전트 SSE
+│   ├── files_router.py        #   /files/analyze — 이력서 텍스트 → 규칙 기반 질문 생성
+│   ├── interview_rag.py       #   /interview/rag가 사용하는 직무 공고 RAG chain
+│   └── sessions.py            #   in-memory 세션 저장소
+│
+├── frontend/
+│   └── interview_app.py       # Streamlit 단일 파일, 5모드 면접 코치 UI
+│
+├── front_end/                 # React + Vite UI — ⚠️ 완전히 분리된 별도 구성 요소
+│   │                           #   Python venv/uv와 무관, Node.js 환경을 따로 설치·실행해야 함
+│   └── src/
+│       ├── layouts/RootLayout.jsx   # 사이드바 내비게이션
+│       ├── pages/                    # HomePage, ResumePage, AgentStreamPage, SettingsPage
+│       ├── components/               # ChatInput, ChatMessageList, InterviewSettingsPanel 등
+│       ├── api/                      # resumeApi, interviewAPI, agentStreamApi
+│       └── config/, hooks/, utils/
+│
+├── core/                       # 8주차부터 재사용하는 공용 모듈 (roles, agents, tools, config)
+└── .env                        # OPENAI_API_KEY, BACKEND_URL 등
+```
 
-docs
-`[]`
+> 이 레포지토리 뒤쪽에 **사내 문서 QA 챗봇**(`backend/app.py` + `frontend/app.py`/`pages/` + React `front_end/src/pages/qa/*`)을 별도로 이어서 만들었습니다. interview app과는 독립된 확장이라 위 구조도에서는 생략했습니다.
 
-quality
-{}
+## 3. 페이지별 역할
 
-route_log
-[]
-Output
+### Streamlit — `frontend/interview_app.py`
+사이드바 라디오로 5개 모드를 전환하는 단일 스크립트:
 
-Markdown
-Fields
+| 모드 | 호출 엔드포인트 | 역할 |
+|---|---|---|
+| `rag` 📚 | `POST /interview/rag` | 직무 공고 문서를 근거로 맞춤형 면접 코칭 |
+| `rag_thread` 🧵 | `POST /interview/rag/thread` | thread_id로 대화 맥락을 유지하며 코칭 |
+| `chat` 💬 | `POST /interview/chat` | 직무 문서 없이 일반 면접 상담 |
+| `structured` 📊 | `POST /interview/structured` | `질문 \| 답변` 형식 입력을 점수/강점/개선점/후속 질문으로 평가 |
+| `parallel` 🔀 | `POST /interview/parallel` | 면접 질문 생성 + 준비 팁을 동시에 생성 |
 
+⚠️ 현재 `backend/main.py`에는 `/interview/rag`만 구현되어 있어 **`rag` 모드만 정상 동작**하며, 나머지 모드는 대응 엔드포인트가 없어 404가 발생합니다.
 
+### React — `front_end/src/pages/`
 
-answer
-제공된 문서에서 관련 내용을 찾기 어렵습니다.
+| 페이지 | 라우트 | 호출 엔드포인트 | 역할 |
+|---|---|---|---|
+| `HomePage.jsx` | `/` | – | 서비스 소개 랜딩 페이지 |
+| `ResumePage.jsx` | `/resume` | `POST /files/analyze` | 이력서/자소서 txt 업로드 → 규칙 기반 예상 질문 생성 |
+| `AgentStreamPage.jsx` | `/agents` | `POST /agents/stream` (SSE) | 설정값(모델/온도/역할/프롬프트/single·multi 모드) 기반 면접 에이전트와 실시간 스트리밍 대화 |
+| `SettingsPage.jsx` | `/settings` | – (localStorage) | 모델, temperature, system prompt, 역할 프리셋, single/multi 모드를 저장해 다른 페이지에서 재사용 |
 
-question
-휴가
+### Backend 라우터 요약
 
-attempts
-0
+| 파일 | 담당 엔드포인트 |
+|---|---|
+| `backend/main.py` | FastAPI 엔트리포인트, 아래 라우터 3개 + `/interview/rag`, `/health` |
+| `backend/interview_router.py` | `/interview/session/*`(세션 생성·이력·역할 변경), `/interview/stream`(SSE 피드백) |
+| `backend/agent_router.py` | `/agents/stream` |
+| `backend/files_router.py` | `/files/analyze` |
 
-docs
+> 사내 문서 QA 챗봇의 페이지(`frontend/app.py`/`pages/`, React `qa/*`)와 백엔드(`backend/app.py`)는 이 레포지토리 뒤쪽에 별도로 이어서 만든 것이라 위 표에서는 생략했습니다.
 
-0
+## 4. 실행 방법
+uv venv --python 3.11로 venv 생성
+uv sync로 필요 패키지 설치 </br>
+.env에 OPENAI_API_KEY,BACKEND_URL을 등록하고 사용해야 한다.</br>
+CLI에 현재 디렉토리 기준 실행 방법 명령어 </br>
 
-id
-37830ffb-ec5c-4581-ba06-522cf68a0ef8
+### backend FastAPI
+- `uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000`
 
-page_content
-### 1.4 경조 휴가 결혼(본인 5일, 자녀 1일), 출산(배우자 10일), 부모 사망(5일), 조부모/형제 사망(3일)의 경조 휴가가 제공됩니다. 경조 휴가는 사유 발생일로부터 30일 이내에 사용해야 합니다. ## 2. 출장 규정 ### 2.1 출장비 한도 국내 출장비 한도는 일비 2만원, 숙박비 10만원(서울 기준), 교통비 실비 정산입니다. 해외 출장은 지역별 차등 적용되며, 미주/유럽 지역은 일비 50달러, 아시아 지역은 일비 40달러입니다. ### 2.2 출장 신청 절차 출장 신청은 출장 시작 5영업일 전까지 그룹웨어에서 출장 신청서를 제출합니다. 해외 출장은 10영업일 전까지 신청해야 하며, 부서장과 본부장 2단계 승인이 필요합니다. ### 2.3 출장비 정산 출장비 정산은 출장 종료 후 7영업일 이내에 영수증과 함께 경비 보고서를 제출해야 합니다. 법인카드 사용이 원칙이며, 개인카드 사용 시 별도 사유서를 첨부합니다. ## 3. 복리후생
+### frontend-streamlit
+- `uv run streamlit run frontend/interview_app.py --server.port 8501`
 
-type
-Document
+### frontend_react (⚠️ 별도 구성 요소 — 필수)
+`front_end`는 Python venv/uv 설치와 **무관한 별개의 Node.js 프로젝트**이므로, 위 backend를 켠 뒤 아래를 **따로** 실행해야 화면이 뜹니다.
+- `cd front_end`
+- `npm install` (package.json에 있는 필수 패키지 설치)
+- `npm run dev`
 
-metadata
+> 사내 문서 QA 챗봇(`backend/app.py` + `frontend/app.py` + React `qa/*`)을 실행하려면 `backend.app:app`을 별도 포트로 띄우세요 — interview app과 기본 포트(8000)가 겹치므로 동시 실행은 피하세요.
 
-source
-C:\Users\ghkdd\PycharmProjects\interview_app\backend\sample_docs\company_policy.txt
+## 5. 핵심 기능 5개
 
-start_index
-445
+### 1. 면접 에이전트 스트리밍 채팅
 
-1
+사용자가 면접 답변이나 요청을 입력하면 FastAPI 백엔드의 `/agents/stream` 엔드포인트로 요청을 보냅니다.  
+백엔드는 SSE 방식으로 AI 면접관의 응답을 토큰 단위로 전달하고, Streamlit,React 화면에서는 이를 실시간 채팅처럼 출력합니다.
 
-id
-1ef57de7-2b38-4b1c-992f-2c89ec644f75
+---
 
-page_content
-# 사내 규정 안내 문서 (RAG 테스트용) ## 1. 휴가 규정 ### 1.1 연차 휴가 연차 휴가는 입사일 기준으로 산정됩니다. 입사 1년차에는 15일의 연차 휴가가 부여되며, 이후 매 2년마다 1일씩 추가됩니다. 최대 연차 일수는 25일입니다. ### 1.2 휴가 신청 절차 휴가 신청은 그룹웨어의 근태 관리 메뉴에서 휴가 신청서를 작성하는 것으로 시작합니다. 신청서에는 휴가 유형(연차, 반차, 경조 휴가)과 기간을 입력하고, 결재선은 소속 팀장을 1차 승인자로 지정합니다. 휴가 시작일 기준 최소 3영업일 전에 신청해야 합니다. ### 1.3 연차 이월 미사용 연차는 회계연도 말에 수당으로 정산하거나 다음 해로 이월할 수 있습니다. 이월 가능한 연차는 최대 5일이며, 부서장 승인이 필요합니다. 반차는 오전(09:00~14:00)과 오후(14:00~18:00)로 구분됩니다.
+### 2. 설정 페이지
 
-type
-Document
+면접 에이전트가 사용할 설정을 관리하는 페이지를 구현했습니다.
 
-metadata
+관리하는 설정 항목은 다음과 같습니다.
 
-source
-C:\Users\ghkdd\PycharmProjects\interview_app\backend\sample_docs\company_policy.txt
+- 모델 선택
+- temperature 설정
+- 역할 프리셋 선택
+- 시스템 프롬프트 편집
+- 에이전트 모드 선택 `single / multi`
 
-start_index
-0
+저장된 설정은 이후 면접 에이전트 페이지와 이력서 분석 페이지에서 재사용됩니다.
 
-2
+---
 
-id
-4fb8a3e6-14c5-4068-8538-a01ae1bcfc9f
+### 3. 이력서 / 자기소개서 txt 파일 업로드
 
-page_content
-## 3. 복리후생 ### 3.1 건강검진 전 직원 대상 연 1회 종합 건강검진을 지원합니다. 만 35세 이상 직원은 정밀 검진 항목이 추가됩니다. 검진 당일은 유급 반차로 처리됩니다. ### 3.2 자기개발 지원 연간 100만원 한도 내에서 직무 관련 교육비를 지원합니다. 온라인 강의, 세미나, 자격증 시험 응시료가 포함되며, 사전 승인 후 영수증 정산 방식으로 진행됩니다. ### 3.3 경조금 결혼(본인 20만원, 자녀 10만원), 출산(10만원), 부모 사망(20만원), 조부모/형제 사망(10만원)의 경조금이 지급됩니다. ### 3.4 통신비 지원 직급별 월 통신비 한도: 사원 3만원, 대리 4만원, 과장 이상 5만원. 법인폰 미사용 시 개인 통신비를 지원합니다. ## 4. 근무 시간
+사용자가 `.txt` 파일 형식의 이력서 또는 자기소개서를 업로드할 수 있도록 구현했습니다.  
+업로드된 파일은 프론트엔드에서 텍스트로 읽어 미리보기로 표시하고, 분석 요청 시 백엔드로 전달합니다.
 
-type
-Document
+---
 
-metadata
+### 4. 이력서 기반 면접 질문 생성
 
-source
-C:\Users\ghkdd\PycharmProjects\interview_app\backend\sample_docs\company_policy.txt
+업로드된 이력서 또는 자기소개서 본문을 기반으로 맞춤형 면접 질문을 생성하는 기능을 구현했습니다.  
+프론트엔드는 `/files/analyze` 엔드포인트로 다음 데이터를 전송합니다.
 
-start_index
-923
+```json
+{
+  "input": "이력서 또는 자기소개서 본문",
+  "question_count": 5,
+  "role_preset": "기술 면접"
+}
+```
 
-quality
+## 6. 기술 스택
+    python
+ 
+    "dotenv>=0.9.9"
+    "fastapi>=0.136.3"
+    "openai>=2.41.0"
+    "openai-agents>=0.17.4"
+    "streamlit>=1.58.0"
+    "pydantic==2.13.4"
 
-reason
-sources ok
+    React
 
-passed
-true
+    "@tailwindcss/vite": "^4.3.0",
+    "axios": "^1.17.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.17.0",
+    "tailwindcss": "^4.3.0"
+- 해당 패키지 버전은 uv pip freeze > requirements.txt 에서 가져온 것이며,react는 package.json에 있는 값을 복사했다.
 
-route_log
-
-0
-
-decision
-generate
-
-reason
-quality ok
-
-attempts
-0
-
-quality_ok
-true
-Attributes
-Metadata
-revision_id
-
-b13e25e-dirty
-
-Input
-question
-
-면접 준비
-
-Output
-면접 준비를 위한 몇 가지 유용한 팁을 드릴게요.
-기업 조사: 지원하는 회사의 비전, 미션, 문화, 최근 소식 등을 파악하세요.
-자기 소개 준비: 자신의 경력과 강점을 간결하게 설명할 수 있도록 연습하세요. 1-2분 정도로 요약하는 것이 좋습니다.
-질문 대비: 일반적인 면접 질문(예: "자신의 장단점은?", "지원 동기는?")을 준비하고, STAR 기법(상황, 행동, 결과)을 활용해 구체적인 사례로 답변하세요.
-모의 면접: 친구나 가족과 함께 모의 면접을 진행해보세요. 실제 면접과 비슷한 환경을 경험하면 자신감이 향상됩니다.
-복장과 태도: 면접에 적합한 복장을 선택하고, 면접 중에는 자신감 있게 눈을 맞추며 대화하세요.
-질문 준비: 면접관에게 질문할 사항을 미리 준비해 두세요. 회사나 팀에 대한 관심을 보이는 좋은 방법입니다.
-사전 연습: 답변을 여러 번 반복 연습하여 자연스럽게 말할 수 있도록 하세요.
-
-면접 준비 잘 하시고, 자신감을 가지세요! 여러분의 메시지를 잘 전달하는 것이 중요합니다.
-
-- FastAPI logs
-- INFO:     Application startup complete.
-- INFO:     127.0.0.1:59375 - "POST /rag HTTP/1.1" 200 OK
-- INFO:     127.0.0.1:55027 - "POST /chat HTTP/1.1" 200 OK
-
-출력 비교
-![img_1.png](img_1.png)
-
-
-
-
-
-
-
-
-
-![img.png](img.png)
-
+## 7. Day 1~5 완성 과정
+    day 1 : streamlit 준비 및 채팅 골격 준비
+    day 2 : FastAPI 백엔드 pydantic,router 골격 및 StreamingResponse를 이용한 프론트 스트리밍 골격
+    day 3 : FastAPI 및 Streamlit API 연결 및 agent 전환 / 라우터 역할 파일 분리
+    day 4 : sidebar 이력서 Layout 연결 및 광역 session_state 선언
+    day 5 : utils.py에 에러상태 정의 fastAPI 연결상태 확인 Swagger docs를 확인햐여 일치하는 값으로 변환
+- react버전은 흐름도는 담았지만, 약간 다른 과정, 약간 다른 결과물 , 오류 처리에 한계
+## Q9-1 수료 기준 확인
+TODO: 아래 5개 기준을 직접 확인한 결과를 적으세요.
+체크 항목
+확인
+1. interview_app/frontend/report.py가 생성되었다. &gt; 해당 내용은 history.py에 담음
+2. build_interview_report() 함수가 비어 있지 않은 문자열을 반환한다.
+✅
+3. render_report_download()에서 세션/메시지 없을 때 안내 메시지가 표시된다.
+✅
+4. ensure_session_state(), add_new_session(), delete_current_session()이 작성되었다.
+✅
+5. render_final_dashboard()에서 st.progress 값이 1.0 이하로 제한된다.
+✅
+6. interview_app/README.md에 6개 섹션이 모두 채워졌다.
+[ ]
+7. Q9-1 5개 기준 확인표에서 4개 이상이 ✅로 표시된다.
+[ ]
 

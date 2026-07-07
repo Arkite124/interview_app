@@ -22,8 +22,10 @@ st.set_page_config(
 )
 
 # ─── Backend URL ─────────────────────────────────────────────────────
-
-BACKEND_URL = "http://127.0.0.1:8000"
+from dotenv import load_dotenv
+load_dotenv()
+import os
+BACKEND_URL = os.getenv("BACKEND_URL")
 
 # ─── Session State 초기화 ────────────────────────────────────────────
 
