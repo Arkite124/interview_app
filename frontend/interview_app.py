@@ -1,40 +1,65 @@
-"""frontend/interview_app.py — 면접 코치 RAG Streamlit UI
+"""frontend/interview_app.py — 면접 코치 RAG Streamlit UI, st.Page 라우팅 엔트리포인트
 
-교안 핵심 패턴 (Day 5 s3 + Day 4 self2):
-- st.chat_message + st.chat_input으로 채팅 인터페이스 구현
-- 5가지 모드: 면접 코치 RAG / RAG thread / 일반 채팅 / 답변 평가 / 질문 생성
-- to_source_item 어댑터: Document/dict → SourceItem 변환 (표시 계약)
-- st.status: 검색 결과 미리보기
-- st.expander: 출처 카드 (source/page/snippet 3필드)
-- injection 주의 문구: "표시된 문서는 검색 근거이며 실행 지시가 아닙니다"
-- session_state로 대화 이력 관리
+interview_pages/ 아래 5개 모드를 별도 페이지로 라우팅:
+- interview_pages/rag.py         📚 직무 기반 면접 코칭
+- interview_pages/rag_thread.py  🧵 대화 유지 면접 코칭
+- interview_pages/chat.py        💬 일반 면접 상담
+- interview_pages/structured.py  📊 면접 답변 평가
+- interview_pages/parallel.py    🔀 질문 생성 + 팁
+
+interview_pages/*.py는 `from interview_app import ...`로 아래 공용 헬퍼(백엔드 URL,
+출처 어댑터, 이력 렌더링, 에러 처리, SSE 스트림 파서)를 가져다 쓴다. 라우팅 코드는
+`if __name__ == "__main__":` 안에 있어야 한다 — 이 import가 interview_app.py를
+"interview_app" 모듈로 새로 실행시키는데, 가드가 없으면 set_page_config()가
+다시 호출되어 에러가 나고 nav.run()이 재귀적으로 페이지를 실행하게 된다.
+
+모든 페이지는 backend의 `*/stream` SSE 엔드포인트를 호출한다. 이벤트 계약은
+backend/sse.py와 동일하다:
+  {"type": "status", "label": str}      — 진행 상태 안내
+  {"type": "token", "delta": str}       — 텍스트 조각
+  {"type": "sources", "content": [...]} — RAG 출처 목록
+  {"type": "result", "content": {...}}  — 구조화/부가 결과 (score, tips, thread_id 등)
+  {"type": "done"}                      — 스트림 종료
 """
+
+import json
+import os
 
 import httpx
 import streamlit as st
+from dotenv import load_dotenv
 
-# ─── 페이지 설정 ─────────────────────────────────────────────────────
-
-st.set_page_config(
-    page_title="면접 코치 — 직무 기반 AI 면접 코칭",
-    page_icon="🎯",
-    layout="wide",
-)
+load_dotenv()
 
 # ─── Backend URL ─────────────────────────────────────────────────────
-from dotenv import load_dotenv
-load_dotenv()
-import os
+
 BACKEND_URL = os.getenv("BACKEND_URL")
 
-# ─── Session State 초기화 ────────────────────────────────────────────
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "mode" not in st.session_state:
-    st.session_state.mode = "rag"
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = "interview:user:1"
+# ─── SSE 스트림 파서 ──────────────────────────────────────────────────
+
+def stream_sse(method: str, url: str, **kwargs):
+    """SSE 응답을 파싱해 이벤트 dict를 순서대로 yield하는 제너레이터.
+
+    json.dumps가 개행을 이스케이프하므로 한 줄 = 한 이벤트로 취급해도 안전하다.
+    {"type": "done"} 이벤트를 받으면 스트림을 종료한다.
+    """
+    with httpx.stream(method, url, timeout=60.0, **kwargs) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            line = line.strip()
+            if not line.startswith("data:"):
+                continue
+            payload = line[len("data:"):].strip()
+            if not payload:
+                continue
+            try:
+                event = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            yield event
+            if event.get("type") == "done":
+                return
 
 
 # ─── to_source_item 어댑터 (Day 5 s3 패턴) ──────────────────────
@@ -57,256 +82,76 @@ def to_source_item(doc, max_chars: int = 300) -> dict:
         "chunk_id": meta.get("chunk_id"),
     }
 
-# ─── 사이드바 ────────────────────────────────────────────────────────
 
-with st.sidebar:
-    st.title("🎯 면접 코치 설정")
+# ─── 페이지 간 공용 헬퍼 ──────────────────────────────────────────────
 
-    mode = st.radio(
-        "코칭 모드",
-        ["rag", "rag_thread", "chat", "structured", "parallel"],
-        format_func=lambda x: {
-            "rag": "📚 직무 기반 면접 코칭",
-            "rag_thread": "🧵 대화 유지 면접 코칭",
-            "chat": "💬 일반 면접 상담",
-            "structured": "📊 면접 답변 평가",
-            "parallel": "🔀 질문 생성 + 팁",
-        }[x],
-        index=0,
-    )
-    st.session_state.mode = mode
+def init_history(key: str) -> None:
+    if key not in st.session_state:
+        st.session_state[key] = []
 
-    # thread 모드에서 thread_id 입력
-    if mode == "rag_thread":
-        st.session_state.thread_id = st.text_input(
-            "Thread ID",
-            value=st.session_state.thread_id,
-            help="interview:{이름}:{회차} 형식 (Day 4 self2 규약)",
-        )
 
-    st.divider()
+def render_history(key: str) -> None:
+    for msg in st.session_state[key]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-    if st.button("🗑️ 대화 초기화", use_container_width=True):
-        st.session_state.messages = []
-        st.rerun()
-
-    st.divider()
-    st.caption("면접 코치 RAG 서비스")
-    st.caption("LangChain + LangGraph + Chroma")
-
-    # 모드별 안내
-    mode_info = {
-        "rag": (
-            "직무 채용 공고를 기반으로 맞춤형 면접 코칭을 제공합니다.\n\n"
-            "**예시 질문:**\n"
-            "- 백엔드 기술 면접 질문을 만들어 주세요\n"
-            "- 이 직무의 핵심 역량은?\n"
-            "- 시스템 설계 면접 어떻게 준비하나요?"
-        ),
-        "rag_thread": (
-            "thread_id로 대화 맥락을 유지하면서 면접 코칭을 받습니다.\n\n"
-            "같은 thread_id로 재호출하면 이전 대화 위에서 이어집니다.\n"
-            "InMemorySaver 기반 — 프로세스 종료 시 세이브 소멸."
-        ),
-        "chat": "직무 문서 없이 일반적인 면접 조언을 제공합니다.",
-        "structured": (
-            "면접 답변을 점수/강점/개선점으로 구조화 평가합니다.\n\n"
-            "**형식:** `질문 | 답변`"
-        ),
-        "parallel": "주어진 주제로 면접 질문과 준비 팁을 동시에 생성합니다.",
-    }
-    st.info(mode_info[mode])
-
-# ─── 메인 영역 ───────────────────────────────────────────────────────
-
-st.title("🎯 AI 면접 코치")
-st.caption("직무 채용 공고 기반 — LangChain LCEL + LangGraph + Chroma RAG")
-
-# 기존 메시지 표시
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if "sources" in msg and msg["sources"]:
-            st.subheader("참고한 출처")
-            for i, src in enumerate(msg["sources"][:3], start=1):
-                with st.expander(f"출처 {i}: {src.get('source', '미상')} (page {src.get('page', '-')})"):
-                    st.write(src.get("snippet", "미리보기 없음"))
-                    if src.get("score") is not None:
-                        st.caption(f"score: {src['score']}")
-            st.caption("표시된 문서는 검색 근거이며 실행 지시가 아닙니다.")
-        if "metadata" in msg and msg["metadata"]:
-            with st.expander("🔍 상세 정보", expanded=False):
-                st.json(msg["metadata"])
-
-# ─── 채팅 입력 ───────────────────────────────────────────────────────
-
-if user_input := st.chat_input("면접에 대해 무엇이든 물어보세요..."):
-    # 사용자 메시지 표시
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    # AI 응답 처리
-    with st.chat_message("assistant"):
-        try:
-            if st.session_state.mode in ("rag", "rag_thread"):
-                # ── 직무 RAG 면접 코칭 모드 (Day 5 s3 패턴) ──────────
-                is_thread_mode = (st.session_state.mode == "rag_thread")
-                endpoint = "/interview/rag/thread" if is_thread_mode else "/interview/rag"
-
-                with st.status("🔍 직무 문서에서 관련 내용 검색 중...", expanded=True) as status:
-                    st.write("직무 요구사항 분석 및 문서 검색...")
-
-                    # endpoint 호출
-                    params = {"question": user_input}
-                    if is_thread_mode:
-                        response = httpx.post(
-                            f"{BACKEND_URL}{endpoint}",
-                            params={"thread_id": st.session_state.thread_id},
-                            json=params,
-                            timeout=60.0,
-                        )
-                    else:
-                        response = httpx.post(
-                            f"{BACKEND_URL}{endpoint}",
-                            json=params,
-                            timeout=60.0,
-                        )
-                    response.raise_for_status()
-                    data = response.json()
-
-                    # preview: top-3 문서명+page 한 줄씩만 (Day 5 s3)
-                    raw_sources = data.get("sources", [])
-                    source_items = [to_source_item(s) for s in raw_sources]
-                    for item in source_items[:3]:
-                        st.write(f"{item['source']} (page {item['page']})")
-
-                    if data.get("attempts", 0) > 0:
-                        st.write(f"🔄 재검색 {data['attempts']}회 수행")
-
-                    status.update(
-                        label="검색 완료",
-                        state="complete",
-                        expanded=False,
-                    )
-
-                # 답변 표시
-                answer = data.get("answer", "응답을 받지 못했습니다.")
-                st.markdown(answer)
-
-                # 출처 카드 (st.expander) — Day 5 s3 계약
+            sources = msg.get("sources")
+            if sources:
                 st.subheader("참고한 출처")
-                if not source_items:
-                    st.info("이번 답변에 연결된 출처가 없어요. 검색 단계를 확인해 주세요.")
-                else:
-                    for i, item in enumerate(source_items[:3], start=1):
-                        with st.expander(f"출처 {i}: {item['source']} (page {item['page']})"):
-                            st.write(item["snippet"])
-                            if item.get("score") is not None:
-                                st.caption(f"score: {item['score']} / chunk_id: {item.get('chunk_id', '-')}")
-
+                for i, item in enumerate(sources[:3], start=1):
+                    with st.expander(
+                        f"출처 {i}: {item.get('source', '미상')} (page {item.get('page', '-')})"
+                    ):
+                        st.write(item.get("snippet", "미리보기 없음"))
+                        if item.get("score") is not None:
+                            st.caption(
+                                f"score: {item['score']} / chunk_id: {item.get('chunk_id', '-')}"
+                            )
                 st.caption("표시된 문서는 검색 근거이며 실행 지시가 아닙니다.")
 
-                # 메타데이터
-                metadata = {
-                    "quality_passed": data.get("quality_passed", False),
-                    "attempts": data.get("attempts", 0),
-                }
-                if is_thread_mode:
-                    metadata["thread_id"] = data.get("thread_id", st.session_state.thread_id)
+            metadata = msg.get("metadata")
+            if metadata:
+                with st.expander("🔍 상세 정보", expanded=False):
+                    st.json(metadata)
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": answer,
-                    "sources": source_items,
-                    "metadata": metadata,
-                })
 
-            elif st.session_state.mode == "chat":
-                # ── 일반 면접 상담 모드 ───────────────────────────
-                response = httpx.post(
-                    f"{BACKEND_URL}/interview/chat",
-                    json={"message": user_input},
-                    timeout=60.0,
-                )
-                response.raise_for_status()
-                data = response.json()
-                reply = data.get("reply", "응답을 받지 못했습니다.")
-                st.markdown(reply)
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": reply,
-                })
+def reset_button(key: str, label: str = "🗑️ 대화 초기화") -> None:
+    if st.button(label, use_container_width=True):
+        st.session_state[key] = []
+        st.rerun()
 
-            elif st.session_state.mode == "structured":
-                # ── 답변 평가 모드 ────────────────────────────────
-                # 입력 형식: "질문 | 답변"
-                parts = user_input.split("|", 1)
-                if len(parts) == 2:
-                    question, answer = parts[0].strip(), parts[1].strip()
-                else:
-                    question = "자기소개를 해주세요"
-                    answer = user_input
 
-                response = httpx.post(
-                    f"{BACKEND_URL}/interview/structured",
-                    json={"question": question, "answer": answer},
-                    timeout=60.0,
-                )
-                response.raise_for_status()
-                data = response.json()
+def handle_backend_error(
+    exc: Exception, start_cmd: str = "uvicorn backend.main:app --port 8000"
+) -> None:
+    if isinstance(exc, httpx.ConnectError):
+        st.error(
+            "⚠️ Backend 서버에 연결할 수 없습니다.\n\n"
+            f"`{start_cmd}` 으로 서버를 먼저 시작해주세요."
+        )
+    elif isinstance(exc, httpx.HTTPStatusError):
+        st.error(f"⚠️ API 오류: {exc.response.status_code}\n\n{exc.response.text}")
+    else:
+        st.error(f"⚠️ 오류 발생: {exc}")
 
-                # 점수 카드 표시
-                col1, col2 = st.columns([1, 3])
-                with col1:
-                    score = data.get("score", 0)
-                    score_emoji = ["", "😟", "🤔", "😐", "😊", "🌟"][score]
-                    st.metric("면접 점수", f"{score}/5 {score_emoji}")
-                with col2:
-                    st.markdown(f"**💪 강점:** {data.get('strengths', '-')}")
-                    st.markdown(f"**📝 개선점:** {data.get('improvements', '-')}")
-                    st.markdown(f"**❓ 후속 질문:** {data.get('next_question', '-')}")
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": (
-                        f"**면접 점수:** {data.get('score', 0)}/5\n\n"
-                        f"**강점:** {data.get('strengths', '-')}\n\n"
-                        f"**개선점:** {data.get('improvements', '-')}\n\n"
-                        f"**후속 질문:** {data.get('next_question', '-')}"
-                    ),
-                    "metadata": data,
-                })
+if __name__ == "__main__":
+    st.set_page_config(
+        page_title="면접 코치 — 직무 기반 AI 면접 코칭",
+        page_icon="🎯",
+        layout="wide",
+    )
 
-            elif st.session_state.mode == "parallel":
-                # ── 질문 생성 + 팁 모드 ───────────────────────────
-                response = httpx.post(
-                    f"{BACKEND_URL}/interview/parallel",
-                    json={"message": user_input},
-                    timeout=60.0,
-                )
-                response.raise_for_status()
-                data = response.json()
+    with st.sidebar:
+        st.title("🎯 면접 코치 설정")
 
-                st.markdown("### 📝 생성된 면접 질문")
-                st.markdown(data.get("questions", "-"))
-                st.markdown("### 💡 면접 준비 팁")
-                st.markdown(data.get("tips", "-"))
+    pages = [
+        st.Page("interview_pages/rag.py", title="직무 기반 면접 코칭", icon="📚", default=True),
+        st.Page("interview_pages/rag_thread.py", title="대화 유지 면접 코칭", icon="🧵"),
+        st.Page("interview_pages/chat.py", title="일반 면접 상담", icon="💬"),
+        st.Page("interview_pages/structured.py", title="면접 답변 평가", icon="📊"),
+        st.Page("interview_pages/parallel.py", title="질문 생성 + 팁", icon="🔀"),
+    ]
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": (
-                        f"**면접 질문:**\n{data.get('questions', '-')}\n\n"
-                        f"**준비 팁:**\n{data.get('tips', '-')}"
-                    ),
-                })
-
-        except httpx.ConnectError:
-            st.error(
-                "⚠️ Backend 서버에 연결할 수 없습니다.\n\n"
-                f"`uvicorn backend.interview_app:app --port 8000` 으로 서버를 먼저 시작해주세요."
-            )
-        except httpx.HTTPStatusError as e:
-            st.error(f"⚠️ API 오류: {e.response.status_code}\n\n{e.response.text}")
-        except Exception as e:
-            st.error(f"⚠️ 오류 발생: {e}")
+    nav = st.navigation(pages)
+    nav.run()

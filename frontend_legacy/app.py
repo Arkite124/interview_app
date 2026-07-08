@@ -1,19 +1,15 @@
-"""frontend/app.py — Streamlit 채팅 UI (Day 5 S3-S4, 스트리밍 구조)
+"""frontend/app.py — Streamlit 채팅 UI (Day 5 S3-S4)
 
 교안 핵심 패턴:
 - st.chat_message + st.chat_input으로 채팅 인터페이스 구현
-- 3가지 모드: 기본 채팅 / 구조화 평가 / RAG QA / 병렬 응답
-- 모든 모드는 backend의 `*/stream` SSE 엔드포인트를 호출해 실시간으로 답변을 그려낸다.
-- SSE 이벤트 계약(backend/sse.py와 동일):
-  {"type": "status", "label": str}      — 진행 상태 안내
-  {"type": "token", "delta": str}       — 텍스트 조각 (누적 시 전체 답변)
-  {"type": "sources", "content": [...]} — RAG 출처 목록
-  {"type": "result", "content": {...}}  — 구조화/부가 결과 (score, faq 등)
-  {"type": "done"}                      — 스트림 종료
+- 3가지 모드: 기본 채팅 / 구조화 평가 / RAG QA
+- RAG 모드:
+  - st.status: 검색 미리보기 (진행 상태 표시)
+  - st.expander: 출처 카드 (source/page/snippet 3필드)
+  - SourceItem 계약 보존
 - session_state로 대화 이력 관리
 """
 
-import json
 import os
 
 import httpx
@@ -33,33 +29,6 @@ st.set_page_config(
 # ─── Backend URL ─────────────────────────────────────────────────────
 
 BACKEND_URL = os.getenv("BACKEND_URL")
-
-
-# ─── SSE 스트림 파서 ──────────────────────────────────────────────────
-
-def stream_sse(method: str, url: str, **kwargs):
-    """SSE 응답을 파싱해 이벤트 dict를 순서대로 yield하는 제너레이터.
-
-    json.dumps가 개행을 이스케이프하므로 한 줄 = 한 이벤트로 취급해도 안전하다.
-    {"type": "done"} 이벤트를 받으면 스트림을 종료한다.
-    """
-    with httpx.stream(method, url, timeout=60.0, **kwargs) as response:
-        response.raise_for_status()
-        for line in response.iter_lines():
-            line = line.strip()
-            if not line.startswith("data:"):
-                continue
-            payload = line[len("data:"):].strip()
-            if not payload:
-                continue
-            try:
-                event = json.loads(payload)
-            except json.JSONDecodeError:
-                continue
-            yield event
-            if event.get("type") == "done":
-                return
-
 
 # ─── Session State 초기화 ────────────────────────────────────────────
 
@@ -108,7 +77,7 @@ with st.sidebar:
 # ─── 메인 영역 ───────────────────────────────────────────────────────
 
 st.title("🤖 AI 사내 문서 QA 챗봇")
-st.caption("10주차 관통예제 — LangChain LCEL + LangGraph + Chroma RAG (스트리밍)")
+st.caption("10주차 관통예제 — LangChain LCEL + LangGraph + Chroma RAG")
 
 # 기존 메시지 표시
 for msg in st.session_state.messages:
@@ -139,29 +108,35 @@ if user_input := st.chat_input("질문을 입력하세요..."):
     with st.chat_message("assistant"):
         try:
             if st.session_state.mode == "rag":
-                # ── RAG 모드 (SSE 스트리밍) ──────────────────────
-                placeholder = st.empty()
-                placeholder.markdown("🔍 사내 문서 검색 중... (첫 응답까지 시간이 걸릴 수 있어요)")
+                # ── RAG 모드 ─────────────────────────────────────
+                with st.status("🔍 사내 문서 검색 중...", expanded=True) as status:
+                    st.write("질문 분석 및 문서 검색...")
 
-                answer = ""
-                sources = []
-                metadata = {}
-                for event in stream_sse(
-                    "GET", f"{BACKEND_URL}/rag/stream", params={"message": user_input}
-                ):
-                    etype = event.get("type")
-                    if etype == "token":
-                        answer += event.get("delta", "")
-                        placeholder.markdown(answer)
-                    elif etype == "sources":
-                        sources = event.get("content", [])
-                    elif etype == "result":
-                        metadata = event.get("content", {})
+                    response = httpx.post(
+                        f"{BACKEND_URL}/rag",
+                        json={"message": user_input},
+                        timeout=60.0,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
 
-                if not answer:
-                    answer = "응답을 받지 못했습니다."
-                    placeholder.markdown(answer)
+                    st.write(f"✅ 검색 완료 (근거 {len(data.get('sources', []))}건)")
 
+                    if data.get("attempts", 0) > 0:
+                        st.write(f"🔄 재검색 {data['attempts']}회 수행")
+
+                    status.update(
+                        label="검색 완료",
+                        state="complete",
+                        expanded=False,
+                    )
+
+                # 답변 표시
+                answer = data.get("answer", "응답을 받지 못했습니다.")
+                st.markdown(answer)
+
+                # 출처 카드 (st.expander)
+                sources = data.get("sources", [])
                 if sources:
                     with st.expander(f"📎 출처 ({len(sources)}건)", expanded=True):
                         for src in sources:
@@ -172,6 +147,12 @@ if user_input := st.chat_input("질문을 입력하세요..."):
                             )
                             st.divider()
 
+                # 메타데이터
+                metadata = {
+                    "quality_passed": data.get("quality_passed", False),
+                    "attempts": data.get("attempts", 0),
+                }
+
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": answer,
@@ -180,99 +161,81 @@ if user_input := st.chat_input("질문을 입력하세요..."):
                 })
 
             elif st.session_state.mode == "chat":
-                # ── 기본 채팅 모드 (SSE 스트리밍) ────────────────
-                placeholder = st.empty()
-                reply = ""
-                for event in stream_sse(
-                    "POST", f"{BACKEND_URL}/chat/stream", json={"message": user_input}
-                ):
-                    if event.get("type") == "token":
-                        reply += event.get("delta", "")
-                        placeholder.markdown(reply)
-
-                if not reply:
-                    reply = "응답을 받지 못했습니다."
-                    placeholder.markdown(reply)
-
+                # ── 기본 채팅 모드 ───────────────────────────────
+                response = httpx.post(
+                    f"{BACKEND_URL}/chat",
+                    json={"message": user_input},
+                    timeout=60.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+                reply = data.get("reply", "응답을 받지 못했습니다.")
+                st.markdown(reply)
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": reply,
                 })
 
             elif st.session_state.mode == "structured":
-                # ── 구조화 평가 모드 (SSE — status + result) ─────
+                # ── 구조화 평가 모드 ─────────────────────────────
                 # 입력 형식: "질문 | 답변"
                 parts = user_input.split("|", 1)
                 if len(parts) == 2:
-                    question, answer_text = parts[0].strip(), parts[1].strip()
+                    question, answer = parts[0].strip(), parts[1].strip()
                 else:
                     question = "자기소개를 해주세요"
-                    answer_text = user_input
+                    answer = user_input
 
-                status_placeholder = st.empty()
-                result = {}
-                for event in stream_sse(
-                    "POST",
-                    f"{BACKEND_URL}/chat/structured/stream",
-                    json={"question": question, "answer": answer_text},
-                ):
-                    etype = event.get("type")
-                    if etype == "status":
-                        status_placeholder.markdown(f"⏳ {event.get('label', '')}")
-                    elif etype == "result":
-                        result = event.get("content", {})
-                status_placeholder.empty()
+                response = httpx.post(
+                    f"{BACKEND_URL}/chat/structured",
+                    json={"question": question, "answer": answer},
+                    timeout=60.0,
+                )
+                response.raise_for_status()
+                data = response.json()
 
                 # 점수 카드 표시
                 col1, col2 = st.columns([1, 3])
                 with col1:
-                    score = result.get("score", 0)
+                    score = data.get("score", 0)
                     score_emoji = ["", "😟", "🤔", "😐", "😊", "🌟"][score]
                     st.metric("점수", f"{score}/5 {score_emoji}")
                 with col2:
-                    st.markdown(f"**💪 강점:** {result.get('strengths', '-')}")
-                    st.markdown(f"**📝 개선점:** {result.get('improvements', '-')}")
-                    st.markdown(f"**❓ 후속 질문:** {result.get('next_question', '-')}")
+                    st.markdown(f"**💪 강점:** {data.get('strengths', '-')}")
+                    st.markdown(f"**📝 개선점:** {data.get('improvements', '-')}")
+                    st.markdown(f"**❓ 후속 질문:** {data.get('next_question', '-')}")
 
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": (
-                        f"**점수:** {result.get('score', 0)}/5\n\n"
-                        f"**강점:** {result.get('strengths', '-')}\n\n"
-                        f"**개선점:** {result.get('improvements', '-')}\n\n"
-                        f"**후속 질문:** {result.get('next_question', '-')}"
+                        f"**점수:** {data.get('score', 0)}/5\n\n"
+                        f"**강점:** {data.get('strengths', '-')}\n\n"
+                        f"**개선점:** {data.get('improvements', '-')}\n\n"
+                        f"**후속 질문:** {data.get('next_question', '-')}"
                     ),
-                    "metadata": result,
+                    "metadata": data,
                 })
 
             elif st.session_state.mode == "parallel":
-                # ── 병렬 모드 (SSE — answer 토큰 + faq 결과) ─────
+                # ── 병렬 모드 ────────────────────────────────────
+                response = httpx.post(
+                    f"{BACKEND_URL}/chat/parallel",
+                    json={"message": user_input},
+                    timeout=60.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+
                 st.markdown("### 💬 답변")
-                answer_placeholder = st.empty()
-                answer = ""
-                faq = "-"
-                for event in stream_sse(
-                    "POST", f"{BACKEND_URL}/chat/parallel/stream", json={"message": user_input}
-                ):
-                    etype = event.get("type")
-                    if etype == "token":
-                        answer += event.get("delta", "")
-                        answer_placeholder.markdown(answer)
-                    elif etype == "result":
-                        faq = event.get("content", {}).get("faq", "-")
-
-                if not answer:
-                    answer = "-"
-                    answer_placeholder.markdown(answer)
-
+                st.markdown(data.get("answer", "-"))
                 st.markdown("### ❓ 관련 FAQ")
-                st.markdown(faq)
+                st.markdown(data.get("faq", "-"))
 
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": (
-                        f"**답변:** {answer}\n\n"
-                        f"**FAQ:** {faq}"
+                        f"**답변:** {data.get('answer', '-')}\n\n"
+                        f"**FAQ:** {data.get('faq', '-')}"
                     ),
                 })
 

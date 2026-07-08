@@ -124,6 +124,94 @@ def build_parallel_chain():
     return parallel.with_fallbacks([fallback_chain])
 
 
+def build_parallel_stream_chains():
+    """스트리밍 전용: answer_branch, faq_chain을 개별 Runnable로 반환.
+
+    build_parallel_chain()과 같은 프롬프트를 쓰지만, SSE에서 answer는
+    토큰 단위로 실시간 스트리밍하고 faq는 완료 후 한 번에 보내야 해서
+    RunnableParallel로 묶기 전 두 체인을 분리한 채로 돌려준다.
+    """
+    model = get_model()
+
+    detailed_prompt = ChatPromptTemplate.from_messages([
+        ("system", "면접 코치로서 상세하게 5문장 이내로 답변하세요."),
+        ("human", "{question}"),
+    ])
+    brief_prompt = ChatPromptTemplate.from_messages([
+        ("system", "면접 코치로서 2문장 이내로 간결하게 답변하세요."),
+        ("human", "{question}"),
+    ])
+    answer_branch = RunnableBranch(
+        (lambda x: len(x.get("question", "")) > 30,
+         detailed_prompt | model | StrOutputParser()),
+        brief_prompt | model | StrOutputParser(),
+    )
+
+    faq_prompt = ChatPromptTemplate.from_messages([
+        ("system", "이 질문과 관련된 면접 FAQ 2개를 '-' 목록으로 간단히 제시하세요."),
+        ("human", "{question}"),
+    ])
+    faq_chain = faq_prompt | model | StrOutputParser()
+
+    return answer_branch, faq_chain
+
+
+# ─── 면접 질문 생성 + 준비 팁 병렬 chain (interview 트랙 전용) ──────
+
+def build_interview_parallel_chain():
+    """주제/직무 입력 하나로 예상 면접 질문 + 준비 팁을 동시 생성하는 chain.
+
+    - RunnableParallel: 동일 입력을 questions_chain / tips_chain에 복사
+    - 반환 계약: {"questions": str, "tips": str}
+    """
+    model = get_model()
+
+    questions_prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "당신은 면접관입니다. 주어진 주제나 직무와 관련된 예상 면접 질문 3개를 "
+         "번호를 매겨 간결하게 제시하세요."),
+        ("human", "{question}"),
+    ])
+    questions_chain = questions_prompt | model | StrOutputParser()
+
+    tips_prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "당신은 면접 코치입니다. 주어진 주제나 직무에 대한 면접 준비 팁을 "
+         "'-' 목록으로 2~3개 간결하게 제시하세요."),
+        ("human", "{question}"),
+    ])
+    tips_chain = tips_prompt | model | StrOutputParser()
+
+    return RunnableParallel(questions=questions_chain, tips=tips_chain)
+
+
+def build_interview_parallel_stream_chains():
+    """스트리밍 전용: questions_chain, tips_chain을 개별 Runnable로 반환.
+
+    build_interview_parallel_chain()과 같은 프롬프트를 쓰되, questions는
+    토큰 단위로 스트리밍하고 tips는 완료 후 한 번에 보내기 위해 분리한다.
+    """
+    model = get_model()
+
+    questions_prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "당신은 면접관입니다. 주어진 주제나 직무와 관련된 예상 면접 질문 3개를 "
+         "번호를 매겨 간결하게 제시하세요."),
+        ("human", "{question}"),
+    ])
+    questions_chain = questions_prompt | model | StrOutputParser()
+
+    tips_prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "당신은 면접 코치입니다. 주어진 주제나 직무에 대한 면접 준비 팁을 "
+         "'-' 목록으로 2~3개 간결하게 제시하세요."),
+        ("human", "{question}"),
+    ])
+    tips_chain = tips_prompt | model | StrOutputParser()
+
+    return questions_chain, tips_chain
+
+
 # ─── smoke test ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -1,9 +1,22 @@
-// src/pages/qa/ParallelPage.jsx — 🔀 병렬 + 분기 응답 (답변 + FAQ)
+// src/pages/qa/ParallelPage.jsx — 🔀 병렬 + 분기 응답 (SSE — answer 토큰 + faq 결과)
 
 import { useState } from "react";
 import ChatThread from "../../components/qa/ChatThread";
 import ChatComposer from "../../components/qa/ChatComposer";
-import { requestParallelAnswer } from "../../api/qaApi";
+import { streamParallelAnswer } from "../../api/qaApi";
+
+function updateLastAssistant(setMessages, updater) {
+  setMessages((prev) => {
+    const next = [...prev];
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      if (next[i].role === "assistant") {
+        next[i] = updater(next[i]);
+        break;
+      }
+    }
+    return next;
+  });
+}
 
 function ParallelPage() {
   const [messages, setMessages] = useState([]);
@@ -12,32 +25,42 @@ function ParallelPage() {
 
   const handleSubmit = async (question) => {
     setErrorMessage("");
-    setMessages((prev) => [...prev, { role: "user", content: question }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: question },
+      { role: "assistant", content: "", faq: "" },
+    ]);
     setIsLoading(true);
 
-    try {
-      const data = await requestParallelAnswer(question);
+    let answer = "";
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: data.answer || "-",
-          faq: data.faq || "-",
-        },
-      ]);
-    } catch (error) {
-      setErrorMessage(error.message);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ 오류가 발생했습니다. 백엔드 서버를 확인해 주세요.",
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
+    await streamParallelAnswer(question, {
+      onToken: (delta) => {
+        answer += delta;
+        updateLastAssistant(setMessages, (msg) => ({ ...msg, content: answer }));
+      },
+      onResult: (result) => {
+        updateLastAssistant(setMessages, (msg) => ({
+          ...msg,
+          faq: result.faq || "-",
+        }));
+      },
+      onDone: () => {
+        updateLastAssistant(setMessages, (msg) => ({
+          ...msg,
+          content: msg.content || "-",
+        }));
+      },
+      onError: (error) => {
+        setErrorMessage(error.message);
+        updateLastAssistant(setMessages, (msg) => ({
+          ...msg,
+          content: msg.content || "⚠️ 오류가 발생했습니다. 백엔드 서버를 확인해 주세요.",
+        }));
+      },
+    });
+
+    setIsLoading(false);
   };
 
   const handleReset = () => {

@@ -8,15 +8,24 @@
 - 422 = FastAPI 문 앞에서 막힘 (요청 검증), 500 = chain으로 가는 복도에서 넘어짐 (배선)
 
 Endpoints:
-  POST /chat           — 기본 채팅 (LCEL chain)
-  POST /chat/structured — 구조화 출력 (InterviewScore)
-  POST /chat/parallel   — 병렬+분기+Fallback chain
-  POST /rag            — RAG QA (LangGraph 품질 루프, JSON 응답)
-  GET  /rag/stream     — RAG QA (SSE 스트리밍)
+  POST /chat                  — 기본 채팅 (LCEL chain)
+  POST /chat/stream            — 기본 채팅 (SSE 스트리밍)
+  POST /chat/structured        — 구조화 출력 (InterviewScore)
+  POST /chat/structured/stream — 구조화 출력 (SSE — status + result)
+  POST /chat/parallel          — 병렬+분기+Fallback chain
+  POST /chat/parallel/stream   — 병렬+분기+Fallback (SSE — answer 토큰 + faq 결과)
+  POST /rag                    — RAG QA (LangGraph 품질 루프, JSON 응답)
+  GET  /rag/stream             — RAG QA (SSE 스트리밍)
+
+SSE 이벤트 계약 (모든 /stream 엔드포인트 공통):
+  data: {"type": "status", "label": str}      — 진행 상태 안내
+  data: {"type": "token", "delta": str}       — 텍스트 조각 (누적 시 전체 답변)
+  data: {"type": "sources", "content": [...]} — RAG 출처 목록
+  data: {"type": "result", "content": {...}}  — 구조화/부가 결과 (faq, score 등)
+  data: {"type": "done"}                      — 스트림 종료
 """
 
 import asyncio
-import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
@@ -25,10 +34,17 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 # chain factory import — route 파일에는 조립 코드를 두지 않음
-from backend.chains import build_chat_chain, build_parallel_chain, build_structured_chain
+from backend.chains import (
+    build_chat_chain,
+    build_parallel_chain,
+    build_parallel_stream_chains,
+    build_structured_chain,
+)
 from backend.rag_graph import build_rag_graph, make_initial_state
 from backend.rag_pipeline import format_sources
 from backend.schemas import ChatRequest, ChatResponse, RagResponse, SourceItem
+from backend.sse import sse as _sse
+from backend.sse import stream_text_chain as _stream_text_chain
 
 # ─── Chain/Graph holder (lifespan에서 1회 초기화) ────────────────────
 
@@ -41,6 +57,7 @@ async def lifespan(app: FastAPI):
     _chains["chat"] = build_chat_chain()
     _chains["structured"] = build_structured_chain()
     _chains["parallel"] = build_parallel_chain()
+    _chains["parallel_stream"] = build_parallel_stream_chains()  # (answer_branch, faq_chain)
     _chains["rag_graph"] = build_rag_graph()
     print("[backend] ✅ Chain/Graph 초기화 완료")
     yield
@@ -86,6 +103,20 @@ async def chat(req: ChatRequest):
     return {"reply": result}
 
 
+# ─── POST /chat/stream — 기본 채팅 (SSE) ─────────────────────────────
+
+@app.post("/chat/stream")
+async def chat_stream(req: ChatRequest):
+    """기본 채팅 — chain.astream()으로 실제 토큰 단위 스트리밍."""
+
+    async def event_generator():
+        async for frame in _stream_text_chain(_chains["chat"], {"question": req.message}):
+            yield frame
+        yield _sse({"type": "done"})
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 # ─── POST /chat/structured — 구조화 출력 ─────────────────────────────
 
 @app.post("/chat/structured")
@@ -102,6 +133,25 @@ async def chat_structured(req: StructuredRequest):
     return result.model_dump()
 
 
+# ─── POST /chat/structured/stream — 구조화 출력 (SSE) ────────────────
+
+@app.post("/chat/structured/stream")
+async def chat_structured_stream(req: StructuredRequest):
+    """구조화 출력은 토큰 단위로 의미 있게 쪼개기 어려워(function-calling 기반),
+    status → result → done 순서로 스트리밍한다."""
+
+    async def event_generator():
+        yield _sse({"type": "status", "label": "답변 평가 중..."})
+        result = await _chains["structured"].ainvoke({
+            "question": req.question,
+            "answer": req.answer,
+        })
+        yield _sse({"type": "result", "content": result.model_dump()})
+        yield _sse({"type": "done"})
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 # ─── POST /chat/parallel — 병렬+분기+Fallback ────────────────────────
 
 @app.post("/chat/parallel")
@@ -112,6 +162,24 @@ async def chat_parallel(req: ChatRequest):
     """
     result = await _chains["parallel"].ainvoke({"question": req.message})
     return result
+
+
+# ─── POST /chat/parallel/stream — 병렬 응답 (SSE) ────────────────────
+
+@app.post("/chat/parallel/stream")
+async def chat_parallel_stream(req: ChatRequest):
+    """answer는 토큰 단위로 실시간 스트리밍하고, faq는 완료 후 한 번에 보낸다."""
+    answer_branch, faq_chain = _chains["parallel_stream"]
+
+    async def event_generator():
+        payload = {"question": req.message}
+        async for frame in _stream_text_chain(answer_branch, payload):
+            yield frame
+        faq = await faq_chain.ainvoke(payload)
+        yield _sse({"type": "result", "content": {"faq": faq}})
+        yield _sse({"type": "done"})
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 # ─── POST /rag — RAG QA (JSON 응답) ─────────────────────────────────
@@ -165,15 +233,21 @@ async def rag_stream(message: str = Query(description="사용자 질문")):
         for i, word in enumerate(words):
             buffer += word + " "
             if (i + 1) % 5 == 0 or i == len(words) - 1:
-                yield f"data: {json.dumps({'type': 'token', 'content': buffer.strip()}, ensure_ascii=False)}\n\n"
+                yield _sse({"type": "token", "delta": buffer.strip()})
                 buffer = ""
                 await asyncio.sleep(0.05)
 
         # 출처 정보 전송
-        yield f"data: {json.dumps({'type': 'sources', 'content': sources}, ensure_ascii=False)}\n\n"
+        yield _sse({"type": "sources", "content": sources})
+
+        # 품질 메타데이터 (JSON 버전 /rag와 동일한 필드)
+        yield _sse({"type": "result", "content": {
+            "quality_passed": final_state.get("quality", {}).get("passed", False),
+            "attempts": final_state.get("attempts", 0),
+        }})
 
         # 종료 신호
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        yield _sse({"type": "done"})
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

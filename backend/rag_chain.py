@@ -56,12 +56,12 @@ def build_rag_chain(retriever, system_prompt):
     )
 
     return (
-        # [1단계] 검색은 여기서 '단 1회' — docs와 question을 함께 다음 단계로 복사해요.
+        # [1단계] 검색은 여기서 '단 1회' — sample_docs와 question을 함께 다음 단계로 복사해요.
         RunnableParallel(
-            docs=lambda x: retriever.invoke(x["question"]),  # ← 이 파일의 retriever 호출은 이 줄 하나뿐
+            sample_docs=lambda x: retriever.invoke(x["question"]),  # ← 이 파일의 retriever 호출은 이 줄 하나뿐
             question=lambda x: x["question"],
         )
-        # [2단계] 동일 docs에서 answer와 sources를 '파생'해요 (retriever 재호출 금지).
+        # [2단계] 동일 sample_docs에서 answer와 sources를 '파생'해요 (retriever 재호출 금지).
         | RunnableParallel(
             answer=answer_chain,
             sources=lambda x: format_sources(x["sample_docs"]),

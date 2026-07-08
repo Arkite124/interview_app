@@ -1,9 +1,22 @@
-// src/pages/qa/ChatPage.jsx — 💬 기본 면접 코치 채팅
+// src/pages/qa/ChatPage.jsx — 💬 기본 면접 코치 채팅 (SSE 스트리밍)
 
 import { useState } from "react";
 import ChatThread from "../../components/qa/ChatThread";
 import ChatComposer from "../../components/qa/ChatComposer";
-import { requestChatReply } from "../../api/qaApi";
+import { streamChatReply } from "../../api/qaApi";
+
+function updateLastAssistant(setMessages, updater) {
+  setMessages((prev) => {
+    const next = [...prev];
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      if (next[i].role === "assistant") {
+        next[i] = updater(next[i]);
+        break;
+      }
+    }
+    return next;
+  });
+}
 
 function ChatPage() {
   const [messages, setMessages] = useState([]);
@@ -12,28 +25,36 @@ function ChatPage() {
 
   const handleSubmit = async (question) => {
     setErrorMessage("");
-    setMessages((prev) => [...prev, { role: "user", content: question }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: question },
+      { role: "assistant", content: "" },
+    ]);
     setIsLoading(true);
 
-    try {
-      const data = await requestChatReply(question);
+    let reply = "";
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.reply || "응답을 받지 못했습니다." },
-      ]);
-    } catch (error) {
-      setErrorMessage(error.message);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ 오류가 발생했습니다. 백엔드 서버를 확인해 주세요.",
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
+    await streamChatReply(question, {
+      onToken: (delta) => {
+        reply += delta;
+        updateLastAssistant(setMessages, (msg) => ({ ...msg, content: reply }));
+      },
+      onDone: () => {
+        updateLastAssistant(setMessages, (msg) => ({
+          ...msg,
+          content: msg.content || "응답을 받지 못했습니다.",
+        }));
+      },
+      onError: (error) => {
+        setErrorMessage(error.message);
+        updateLastAssistant(setMessages, (msg) => ({
+          ...msg,
+          content: msg.content || "⚠️ 오류가 발생했습니다. 백엔드 서버를 확인해 주세요.",
+        }));
+      },
+    });
+
+    setIsLoading(false);
   };
 
   const handleReset = () => {

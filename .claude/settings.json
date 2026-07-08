@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe -m uvicorn backend.app:app --port 8000)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(curl -s http://127.0.0.1:8000/health -w \"\\\\nstatus:%{http_code}\\\\n\")",
+      "Bash(BACKEND_URL=http://127.0.0.1:8000 ../.venv/Scripts/python.exe -c ' *)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //PID 22844 //F)",
+      "Bash(.venv/Scripts/python.exe -m uvicorn backend.main:app --port 8000)",
+      "Bash(taskkill //PID 28572 //F)",
+      "Bash(node \"/c/Users/main/AppData/Local/Temp/claude/c--Users-main-interview-app/b4d1e788-d9ee-46e3-8cd5-870b327aee72/scratchpad/test_stream_sse.mjs\")",
+      "Bash(taskkill //PID 28176 //F)",
+      "Bash(curl -s -o /dev/null -w \"status:%{http_code}\\\\n\" http://127.0.0.1:8000/health --max-time 2)"
+    ]
+  }
+}

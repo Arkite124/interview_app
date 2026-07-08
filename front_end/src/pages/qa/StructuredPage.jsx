@@ -1,9 +1,10 @@
-// src/pages/qa/StructuredPage.jsx — 📊 면접 답변 구조화 평가 (입력 형식: 질문 | 답변)
+// src/pages/qa/StructuredPage.jsx — 📊 면접 답변 구조화 평가 (SSE — status + result)
+// 입력 형식: 질문 | 답변
 
 import { useState } from "react";
 import ChatThread from "../../components/qa/ChatThread";
 import ChatComposer from "../../components/qa/ChatComposer";
-import { requestStructuredEval } from "../../api/qaApi";
+import { streamStructuredEval } from "../../api/qaApi";
 
 const SCORE_EMOJI = ["", "😟", "🤔", "😐", "😊", "🌟"];
 
@@ -45,49 +46,68 @@ function parseQuestionAnswer(rawInput) {
   };
 }
 
+function updateLastAssistant(setMessages, updater) {
+  setMessages((prev) => {
+    const next = [...prev];
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      if (next[i].role === "assistant") {
+        next[i] = updater(next[i]);
+        break;
+      }
+    }
+    return next;
+  });
+}
+
 function StructuredPage() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [statusLabel, setStatusLabel] = useState("");
 
   const handleSubmit = async (rawInput) => {
     setErrorMessage("");
-    setMessages((prev) => [...prev, { role: "user", content: rawInput }]);
-    setIsLoading(true);
-
+    setStatusLabel("");
     const { question, answer } = parseQuestionAnswer(rawInput);
 
-    try {
-      const data = await requestStructuredEval({ question, answer });
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: rawInput },
+      { role: "assistant", content: `"${question}"에 대한 평가 결과입니다.` },
+    ]);
+    setIsLoading(true);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `"${question}"에 대한 평가 결과입니다.`,
-          score: data.score ?? 0,
-          strengths: data.strengths ?? "-",
-          improvements: data.improvements ?? "-",
-          nextQuestion: data.next_question ?? "-",
+    await streamStructuredEval(
+      { question, answer },
+      {
+        onStatus: (label) => setStatusLabel(label),
+        onResult: (result) => {
+          updateLastAssistant(setMessages, (msg) => ({
+            ...msg,
+            score: result.score ?? 0,
+            strengths: result.strengths ?? "-",
+            improvements: result.improvements ?? "-",
+            nextQuestion: result.next_question ?? "-",
+          }));
         },
-      ]);
-    } catch (error) {
-      setErrorMessage(error.message);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ 오류가 발생했습니다. 백엔드 서버를 확인해 주세요.",
+        onError: (error) => {
+          setErrorMessage(error.message);
+          updateLastAssistant(setMessages, (msg) => ({
+            ...msg,
+            content: "⚠️ 오류가 발생했습니다. 백엔드 서버를 확인해 주세요.",
+          }));
         },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
+      }
+    );
+
+    setStatusLabel("");
+    setIsLoading(false);
   };
 
   const handleReset = () => {
     setMessages([]);
     setErrorMessage("");
+    setStatusLabel("");
   };
 
   return (
@@ -130,6 +150,12 @@ function StructuredPage() {
             ) : null
           }
         />
+
+        {isLoading && statusLabel && (
+          <p className="mt-3 text-center text-xs text-slate-400">
+            ⏳ {statusLabel}
+          </p>
+        )}
       </div>
 
       <div className="mt-4">
